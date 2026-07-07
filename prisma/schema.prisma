@@ -1,0 +1,177 @@
+// Ad Agent — 主要広告媒体（Google / Yahoo! / Meta / Instagram / X / TikTok）統合管理
+// 構成は X Agent (x-step) / IG Agent を踏襲（Next.js 16 + Prisma 7 + NextAuth v5 マルチテナント）
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// マルチテナント基盤（認証 + 組織）
+// ─────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String?
+  plan      String   @default("free") // free / light / standard / pro
+  suspended Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  connections AdConnection[]
+  insights    Insight[]
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String    @unique
+  emailVerified  DateTime?
+  image          String?
+  passwordHash   String? // Credentials ログイン用
+  role           String    @default("user") // user / admin
+  organizationId String?
+  createdAt      DateTime  @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id])
+  accounts     Account[]
+  sessions     Session[]
+
+  @@index([organizationId])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────
+// 広告運用ドメイン（すべて organizationId でスコープ）
+// ─────────────────────────────────────────────
+
+// 広告媒体アカウントの接続。
+// mode=api: OAuth で実 API に接続（トークンは lib/crypto.ts の AES-256-GCM で暗号化保存）。
+// mode=demo: API 資格情報なしで動かすデモ接続（決定的な擬似データを生成）。
+model AdConnection {
+  id                String    @id @default(cuid())
+  organizationId    String
+  platform          String // google / yahoo / meta / instagram / x / tiktok
+  mode              String    @default("demo") // demo / api
+  status            String    @default("connected") // connected / expired / revoked / error
+  accountName       String // 表示用のアカウント名
+  externalAccountId String? // 媒体側のアカウントID（Google: customer_id, Meta: act_xxx 等）
+  currency          String    @default("JPY")
+  monthlyBudgetYen  Int? // 月予算（消化ペースのアラート判定に使用）
+  accessToken       String? // 暗号化
+  refreshToken      String? // 暗号化
+  tokenExpiresAt    DateTime?
+  scope             String?
+  lastSyncedAt      DateTime?
+  lastError         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaigns    Campaign[]
+
+  @@index([organizationId])
+  @@index([organizationId, platform])
+}
+
+// キャンペーン（媒体横断で最小共通単位に正規化。広告グループ/セットは v2）。
+model Campaign {
+  id             String    @id @default(cuid())
+  organizationId String
+  connectionId   String
+  externalId     String // 媒体側のキャンペーンID（demo は生成値）
+  name           String
+  status         String    @default("active") // active / paused / ended
+  objective      String? // sales / leads / traffic / awareness / app / video
+  dailyBudgetYen Int?
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  connection AdConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  metrics    DailyMetric[]
+
+  @@unique([connectionId, externalId])
+  @@index([organizationId, status])
+}
+
+// 日次実績（キャンペーン×日で1行。cron 同期時に upsert）。
+model DailyMetric {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  campaignId         String
+  date               DateTime @db.Date
+  impressions        Int      @default(0)
+  clicks             Int      @default(0)
+  costYen            Int      @default(0)
+  conversions        Float    @default(0)
+  conversionValueYen Int      @default(0)
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, date])
+  @@index([organizationId, date])
+}
+
+// AI インサイト（Claude が実績を分析したレポート/改善提案/予算アラート）。
+model Insight {
+  id             String    @id @default(cuid())
+  organizationId String
+  kind           String    @default("recommendation") // report / recommendation / alert
+  title          String
+  body           String // Markdown
+  status         String    @default("new") // new / read / dismissed
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  source         String    @default("manual") // manual（画面から生成）/ cron（自動）
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}

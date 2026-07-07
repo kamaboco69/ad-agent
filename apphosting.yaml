@@ -1,0 +1,52 @@
+runConfig:
+  runtime: nodejs22
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+  maxInstances: 4
+  minInstances: 0
+
+env:
+  - variable: NODE_ENV
+    value: production
+  - variable: DATABASE_URL
+    secret: ADAGENT_DATABASE_URL
+  # ── 認証 / マルチテナントSaaS ──
+  - variable: AUTH_SECRET
+    secret: ADAGENT_AUTH_SECRET
+  - variable: AUTH_URL
+    value: https://ad-agent--x-development-17edb.asia-east1.hosted.app
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://ad-agent--x-development-17edb.asia-east1.hosted.app
+  - variable: ENCRYPTION_KEY
+    secret: ADAGENT_ENCRYPTION_KEY
+  # ── AI インサイト生成 ──
+  - variable: ANTHROPIC_API_KEY
+    secret: ADAGENT_ANTHROPIC_API_KEY
+  # ── 定期実行（/api/cron）保護用。Cloud Scheduler から Bearer で渡す ──
+  - variable: CRON_SECRET
+    secret: ADAGENT_CRON_SECRET
+  # ── Google OAuth（ログイン用。x-step と同一クライアント） ──
+  - variable: AUTH_GOOGLE_ID
+    secret: ADAGENT_AUTH_GOOGLE_ID
+  - variable: AUTH_GOOGLE_SECRET
+    secret: ADAGENT_AUTH_GOOGLE_SECRET
+  # ── 実API接続（承認が下りた媒体から順次設定。未設定でもデモ接続で稼働） ──
+  # - variable: GOOGLE_ADS_CLIENT_ID
+  #   secret: ADAGENT_GOOGLE_ADS_CLIENT_ID
+  # - variable: GOOGLE_ADS_CLIENT_SECRET
+  #   secret: ADAGENT_GOOGLE_ADS_CLIENT_SECRET
+  # - variable: GOOGLE_ADS_DEVELOPER_TOKEN
+  #   secret: ADAGENT_GOOGLE_ADS_DEVELOPER_TOKEN
+  # - variable: META_ADS_APP_ID
+  #   secret: ADAGENT_META_ADS_APP_ID
+  # - variable: META_ADS_APP_SECRET
+  #   secret: ADAGENT_META_ADS_APP_SECRET
+  # - variable: TIKTOK_ADS_APP_ID
+  #   secret: ADAGENT_TIKTOK_ADS_APP_ID
+  # - variable: TIKTOK_ADS_APP_SECRET
+  #   secret: ADAGENT_TIKTOK_ADS_APP_SECRET
+  # - variable: YAHOO_ADS_CLIENT_ID
+  #   secret: ADAGENT_YAHOO_ADS_CLIENT_ID
+  # - variable: YAHOO_ADS_CLIENT_SECRET
+  #   secret: ADAGENT_YAHOO_ADS_CLIENT_SECRET

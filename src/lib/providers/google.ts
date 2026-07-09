@@ -62,7 +62,21 @@ interface SearchRow {
   customerClient?: { id?: string; descriptiveName?: string; manager?: boolean; level?: string };
 }
 
+// エラー応答から GoogleAdsFailure の詳細メッセージを取り出す（無ければ汎用 message）
+interface AdsErrorBody {
+  error?: {
+    message?: string;
+    details?: Array<{ errors?: Array<{ message?: string }> }>;
+  };
+}
+function adsErrorMessage(json: AdsErrorBody, status: number): string {
+  const detail = json.error?.details?.flatMap((d) => d.errors ?? []).map((e) => e.message).filter(Boolean);
+  if (detail && detail.length > 0) return detail.join(" / ");
+  return json.error?.message ?? `HTTP ${status}`;
+}
+
 // 運用対象アカウント（path 用）と login-customer-id（MCC経由なら親マネージャー）を分けて指定する
+// 注意: v17以降 pageSize は廃止（固定1万件/ページ）。送ると INVALID_ARGUMENT になる。
 async function gaqlSearch(
   token: string,
   customerId: string,
@@ -72,11 +86,11 @@ async function gaqlSearch(
   const res = await fetch(`${ADS_API}/customers/${customerId}/googleAds:search`, {
     method: "POST",
     headers: adsHeaders(token, loginCustomerId ?? customerId),
-    body: JSON.stringify({ query, pageSize: 10000 }),
+    body: JSON.stringify({ query }),
   });
   // 廃止バージョン等では HTML が返るため、JSONで読めない場合もステータスで説明する
-  const json = (await res.json().catch(() => ({}))) as { results?: SearchRow[]; error?: { message?: string } };
-  if (!res.ok) throw new ProviderError(`Google Ads API エラー: ${json.error?.message ?? `HTTP ${res.status}`}`);
+  const json = (await res.json().catch(() => ({}))) as { results?: SearchRow[] } & AdsErrorBody;
+  if (!res.ok) throw new ProviderError(`Google Ads API エラー: ${adsErrorMessage(json, res.status)}`);
   return json.results ?? [];
 }
 
@@ -274,8 +288,8 @@ export function createGoogleProvider(): AdProvider {
         }),
       });
       if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new ProviderError(`Google キャンペーン更新に失敗: ${json.error?.message ?? res.status}`);
+        const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+        throw new ProviderError(`Google キャンペーン更新に失敗: ${adsErrorMessage(json, res.status)}`);
       }
     },
 
@@ -306,8 +320,8 @@ export function createGoogleProvider(): AdProvider {
         }),
       });
       if (!res.ok) {
-        const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
-        throw new ProviderError(`Google 予算更新に失敗: ${json.error?.message ?? res.status}`);
+        const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+        throw new ProviderError(`Google 予算更新に失敗: ${adsErrorMessage(json, res.status)}`);
       }
     },
   };

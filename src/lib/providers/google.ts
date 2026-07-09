@@ -1,11 +1,13 @@
 import type { AdProvider, ProviderConnection, SelectableAccount, SyncResult, TokenSet } from "./types";
 import { ProviderError, lastDatesJst } from "./types";
 
-// Google Ads API（v18, REST）。
+// Google Ads API（REST）。
 // 必要: OAuth クライアント（GOOGLE_ADS_CLIENT_ID/SECRET）＋ 開発者トークン（GOOGLE_ADS_DEVELOPER_TOKEN, Basic access 以上）。
 // アクセストークンは1時間で失効するため、毎回リフレッシュトークンから取得する。
+// 注意: バージョンは約1年で廃止される（v18は2026-07時点で404 HTML を返した）。廃止されると
+// 「Unexpected token '<' ... is not valid JSON」で全滅するため、エラー時はまずバージョン生存を疑う。
 
-const ADS_API = "https://googleads.googleapis.com/v18";
+const ADS_API = "https://googleads.googleapis.com/v23";
 
 function clientId() {
   return process.env.GOOGLE_ADS_CLIENT_ID ?? "";
@@ -72,8 +74,9 @@ async function gaqlSearch(
     headers: adsHeaders(token, loginCustomerId ?? customerId),
     body: JSON.stringify({ query, pageSize: 10000 }),
   });
-  const json = (await res.json()) as { results?: SearchRow[]; error?: { message?: string } };
-  if (!res.ok) throw new ProviderError(`Google Ads API エラー: ${json.error?.message ?? res.status}`);
+  // 廃止バージョン等では HTML が返るため、JSONで読めない場合もステータスで説明する
+  const json = (await res.json().catch(() => ({}))) as { results?: SearchRow[]; error?: { message?: string } };
+  if (!res.ok) throw new ProviderError(`Google Ads API エラー: ${json.error?.message ?? `HTTP ${res.status}`}`);
   return json.results ?? [];
 }
 
@@ -136,10 +139,12 @@ export function createGoogleProvider(): AdProvider {
       const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
         headers: adsHeaders(json.access_token),
       });
-      const list = (await listRes.json()) as { resourceNames?: string[]; error?: { message?: string } };
+      const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
       const first = list.resourceNames?.[0]?.replace("customers/", "");
       if (!first) {
-        throw new ProviderError(`アクセス可能な Google 広告アカウントが見つかりません: ${list.error?.message ?? ""}`);
+        throw new ProviderError(
+          `アクセス可能な Google 広告アカウントが見つかりません: ${list.error?.message ?? `HTTP ${listRes.status}`}`
+        );
       }
 
       return {
@@ -157,9 +162,9 @@ export function createGoogleProvider(): AdProvider {
       const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
         headers: adsHeaders(token),
       });
-      const list = (await listRes.json()) as { resourceNames?: string[]; error?: { message?: string } };
+      const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
       if (!listRes.ok) {
-        throw new ProviderError(`アカウント一覧の取得に失敗: ${list.error?.message ?? listRes.status}`);
+        throw new ProviderError(`アカウント一覧の取得に失敗: ${list.error?.message ?? `HTTP ${listRes.status}`}`);
       }
       const accessible = (list.resourceNames ?? []).map((r) => r.replace("customers/", ""));
 

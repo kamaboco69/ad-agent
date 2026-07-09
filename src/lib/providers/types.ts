@@ -5,8 +5,17 @@ export interface ProviderConnection {
   id: string;
   platform: PlatformId;
   externalAccountId: string | null;
+  // Google Ads: マネージャー(MCC)経由アクセス時の login-customer-id。直接アクセスは null
+  loginCustomerId: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+}
+
+// 実API接続で選択可能なアカウント（Google Ads の複数アカウント/MCC配下から選ぶ）
+export interface SelectableAccount {
+  id: string; // 運用対象アカウントID（Google: customer_id）
+  loginCustomerId: string | null; // MCC経由なら親マネージャーID、直接アクセスは null
+  name: string; // 表示名
 }
 
 export interface ProviderCampaign {
@@ -53,6 +62,8 @@ export interface AdProvider {
   configured(): boolean;
   authUrl(state: string, redirectUri: string): string;
   exchangeCode(code: string, redirectUri: string): Promise<TokenSet>;
+  // 接続後に選択可能なアカウント一覧を返す（対応する媒体のみ実装。Google Ads は複数アカウント/MCC配下を列挙）
+  listAccounts?(conn: ProviderConnection): Promise<SelectableAccount[]>;
   sync(conn: ProviderConnection, days: number): Promise<SyncResult>;
   setCampaignStatus(conn: ProviderConnection, externalId: string, status: "active" | "paused"): Promise<void>;
   setDailyBudget(conn: ProviderConnection, externalId: string, yen: number): Promise<void>;

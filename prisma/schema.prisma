@@ -100,6 +100,7 @@ model AdConnection {
   status            String    @default("connected") // connected / expired / revoked / error
   accountName       String // 表示用のアカウント名
   externalAccountId String? // 媒体側のアカウントID（Google: customer_id, Meta: act_xxx 等）
+  loginCustomerId   String? // Google Ads: マネージャー(MCC)経由アクセス時の login-customer-id。直接アクセスは null
   currency          String    @default("JPY")
   monthlyBudgetYen  Int? // 月予算（消化ペースのアラート判定に使用）
   accessToken       String? // 暗号化

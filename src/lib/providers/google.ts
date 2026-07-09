@@ -1,4 +1,4 @@
-import type { AdProvider, ProviderConnection, SyncResult, TokenSet } from "./types";
+import type { AdProvider, ProviderConnection, SelectableAccount, SyncResult, TokenSet } from "./types";
 import { ProviderError, lastDatesJst } from "./types";
 
 // Google Ads API（v18, REST）。
@@ -41,13 +41,13 @@ async function freshToken(conn: ProviderConnection): Promise<string> {
   throw new ProviderError("Google のトークンがありません。再接続してください。");
 }
 
-function adsHeaders(token: string, customerId?: string): Record<string, string> {
+function adsHeaders(token: string, loginCustomerId?: string): Record<string, string> {
   const h: Record<string, string> = {
     Authorization: `Bearer ${token}`,
     "developer-token": developerToken(),
     "Content-Type": "application/json",
   };
-  if (customerId) h["login-customer-id"] = customerId;
+  if (loginCustomerId) h["login-customer-id"] = loginCustomerId;
   return h;
 }
 
@@ -56,12 +56,20 @@ interface SearchRow {
   campaignBudget?: { amountMicros?: string };
   segments?: { date?: string };
   metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number };
+  customer?: { id?: string; descriptiveName?: string; manager?: boolean };
+  customerClient?: { id?: string; descriptiveName?: string; manager?: boolean; level?: string };
 }
 
-async function gaqlSearch(token: string, customerId: string, query: string): Promise<SearchRow[]> {
+// 運用対象アカウント（path 用）と login-customer-id（MCC経由なら親マネージャー）を分けて指定する
+async function gaqlSearch(
+  token: string,
+  customerId: string,
+  query: string,
+  loginCustomerId?: string
+): Promise<SearchRow[]> {
   const res = await fetch(`${ADS_API}/customers/${customerId}/googleAds:search`, {
     method: "POST",
-    headers: adsHeaders(token, customerId),
+    headers: adsHeaders(token, loginCustomerId ?? customerId),
     body: JSON.stringify({ query, pageSize: 10000 }),
   });
   const json = (await res.json()) as { results?: SearchRow[]; error?: { message?: string } };
@@ -79,6 +87,11 @@ function cid(conn: ProviderConnection): string {
   const id = conn.externalAccountId?.replace(/-/g, "");
   if (!id) throw new ProviderError("Google 広告のお客様IDが未設定です");
   return id;
+}
+
+// login-customer-id ヘッダ用: MCC経由なら親マネージャーID、直接アクセスは運用アカウント自身
+function loginCid(conn: ProviderConnection): string {
+  return (conn.loginCustomerId ?? conn.externalAccountId ?? "").replace(/-/g, "");
 }
 
 export function createGoogleProvider(): AdProvider {
@@ -138,16 +151,73 @@ export function createGoogleProvider(): AdProvider {
       };
     },
 
+    // 接続ユーザーがアクセス可能な運用アカウントを列挙（MCC配下も展開）。UIのアカウント選択で使用。
+    async listAccounts(conn): Promise<SelectableAccount[]> {
+      const token = await freshToken(conn);
+      const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
+        headers: adsHeaders(token),
+      });
+      const list = (await listRes.json()) as { resourceNames?: string[]; error?: { message?: string } };
+      if (!listRes.ok) {
+        throw new ProviderError(`アカウント一覧の取得に失敗: ${list.error?.message ?? listRes.status}`);
+      }
+      const accessible = (list.resourceNames ?? []).map((r) => r.replace("customers/", ""));
+
+      const out: SelectableAccount[] = [];
+      const seen = new Set<string>();
+      const add = (a: SelectableAccount) => {
+        if (a.id && !seen.has(a.id)) {
+          seen.add(a.id);
+          out.push(a);
+        }
+      };
+
+      for (const acc of accessible) {
+        try {
+          const info = await gaqlSearch(
+            token,
+            acc,
+            "SELECT customer.id, customer.descriptive_name, customer.manager FROM customer",
+            acc
+          );
+          const c = info[0]?.customer;
+          const name = c?.descriptiveName || `アカウント ${acc}`;
+          if (c?.manager !== true) {
+            add({ id: acc, loginCustomerId: null, name });
+            continue;
+          }
+          // マネージャー(MCC)の場合は配下の運用アカウント（非マネージャー）を列挙
+          const clients = await gaqlSearch(
+            token,
+            acc,
+            "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.level FROM customer_client WHERE customer_client.level <= 1",
+            acc
+          );
+          for (const row of clients) {
+            const cc = row.customerClient;
+            if (!cc?.id || cc.manager === true) continue;
+            add({ id: String(cc.id), loginCustomerId: acc, name: cc.descriptiveName || `アカウント ${cc.id}` });
+          }
+        } catch {
+          // 個別アカウントの取得に失敗しても一覧全体は返す（フォールバックで生IDを追加）
+          add({ id: acc, loginCustomerId: null, name: `アカウント ${acc}` });
+        }
+      }
+      return out;
+    },
+
     async sync(conn, days): Promise<SyncResult> {
       const token = await freshToken(conn);
       const customerId = cid(conn);
+      const login = loginCid(conn);
       const dates = lastDatesJst(days);
 
       const campaignRows = await gaqlSearch(
         token,
         customerId,
         `SELECT campaign.id, campaign.name, campaign.status, campaign_budget.amount_micros
-         FROM campaign WHERE campaign.status != 'REMOVED'`
+         FROM campaign WHERE campaign.status != 'REMOVED'`,
+        login
       );
       const metricRows = await gaqlSearch(
         token,
@@ -155,7 +225,8 @@ export function createGoogleProvider(): AdProvider {
         `SELECT campaign.id, segments.date, metrics.impressions, metrics.clicks,
                 metrics.cost_micros, metrics.conversions, metrics.conversions_value
          FROM campaign
-         WHERE segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'`
+         WHERE segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'`,
+        login
       );
 
       return {
@@ -184,7 +255,7 @@ export function createGoogleProvider(): AdProvider {
       const customerId = cid(conn);
       const res = await fetch(`${ADS_API}/customers/${customerId}/campaigns:mutate`, {
         method: "POST",
-        headers: adsHeaders(token, customerId),
+        headers: adsHeaders(token, loginCid(conn)),
         body: JSON.stringify({
           operations: [
             {
@@ -206,18 +277,20 @@ export function createGoogleProvider(): AdProvider {
     async setDailyBudget(conn, externalId, yen) {
       const token = await freshToken(conn);
       const customerId = cid(conn);
+      const login = loginCid(conn);
       // キャンペーンに紐づく予算リソースを特定してから金額を更新する
       const rows = await gaqlSearch(
         token,
         customerId,
-        `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = ${Number(externalId)}`
+        `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = ${Number(externalId)}`,
+        login
       );
       const budgetResource = rows[0]?.campaign?.campaignBudget;
       if (!budgetResource) throw new ProviderError("キャンペーン予算リソースが見つかりません");
 
       const res = await fetch(`${ADS_API}/customers/${customerId}/campaignBudgets:mutate`, {
         method: "POST",
-        headers: adsHeaders(token, customerId),
+        headers: adsHeaders(token, login),
         body: JSON.stringify({
           operations: [
             {

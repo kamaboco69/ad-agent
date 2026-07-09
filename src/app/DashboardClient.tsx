@@ -317,6 +317,52 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     call(`del-${id}`, () => fetch(`/api/connections/${id}`, { method: "DELETE" }));
   };
 
+  // 接続する広告アカウントを選択（Google Ads の複数アカウント/MCC配下から選ぶ）
+  const selectAccount = async (conn: ConnectionView, label: string) => {
+    type Acct = { id: string; loginCustomerId: string | null; name: string };
+    setBusy(`acct-${conn.id}`);
+    let accounts: Acct[] = [];
+    try {
+      const res = await fetch(`/api/connections/${conn.id}/accounts`);
+      const json = (await res.json().catch(() => ({}))) as { accounts?: Acct[]; error?: string };
+      if (!res.ok) {
+        setBanner({ kind: "error", text: json.error ?? "アカウント一覧の取得に失敗しました" });
+        return;
+      }
+      accounts = json.accounts ?? [];
+    } finally {
+      setBusy(null);
+    }
+
+    if (accounts.length === 0) {
+      setBanner({ kind: "error", text: "選択可能なアカウントが見つかりませんでした" });
+      return;
+    }
+
+    const menu = accounts
+      .map((a, i) => `${i + 1}) ${a.name} (${a.id})${a.loginCustomerId ? ` [MCC:${a.loginCustomerId}]` : ""}`)
+      .join("\n");
+    const input = prompt(`${label} で接続するアカウントを番号で選択:\n${menu}`, "1");
+    if (input === null) return;
+    const idx = Number(input.trim()) - 1;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= accounts.length) {
+      setBanner({ kind: "error", text: "無効な番号です" });
+      return;
+    }
+    const chosen = accounts[idx];
+    await call(`acct-${conn.id}`, () =>
+      fetch(`/api/connections/${conn.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          externalAccountId: chosen.id,
+          loginCustomerId: chosen.loginCustomerId,
+          accountName: chosen.name,
+        }),
+      })
+    );
+  };
+
   const setMonthlyBudget = (conn: ConnectionView, label: string) => {
     const input = prompt(`${label} の月予算（円・空欄で解除）`, conn.monthlyBudgetYen ? String(conn.monthlyBudgetYen) : "");
     if (input === null) return;
@@ -513,6 +559,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           <button onClick={() => setMonthlyBudget(c, p.label)} className="text-gray-400 hover:text-white">
                             月予算{c.monthlyBudgetYen ? ` ${yen(c.monthlyBudgetYen)}` : "未設定"}
                           </button>
+                          {p.id === "google" && c.mode === "api" && (
+                            <button
+                              onClick={() => selectAccount(c, p.label)}
+                              disabled={busy === `acct-${c.id}`}
+                              className="text-gray-400 hover:text-white disabled:opacity-50"
+                              title="接続する広告アカウントを選択"
+                            >
+                              アカウント選択
+                            </button>
+                          )}
                           <button
                             onClick={() => disconnect(c.id, p.label)}
                             className="ml-auto text-gray-600 hover:text-red-400"

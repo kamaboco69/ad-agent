@@ -23,6 +23,7 @@ type DbConnection = {
   platform: string;
   mode: string;
   externalAccountId: string | null;
+  loginCustomerId: string | null;
   accessToken: string | null;
   refreshToken: string | null;
 };
@@ -33,6 +34,7 @@ export function toProviderConnection(conn: DbConnection): ProviderConnection {
     id: conn.id,
     platform: conn.platform,
     externalAccountId: conn.externalAccountId,
+    loginCustomerId: conn.loginCustomerId,
     accessToken: conn.accessToken ? decryptSecret(conn.accessToken) : null,
     refreshToken: conn.refreshToken ? decryptSecret(conn.refreshToken) : null,
   };

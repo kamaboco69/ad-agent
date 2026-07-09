@@ -32,12 +32,12 @@ env:
   - variable: AUTH_GOOGLE_SECRET
     secret: ADAGENT_AUTH_GOOGLE_SECRET
   # ── 実API接続（承認が下りた媒体から順次設定。未設定でもデモ接続で稼働） ──
-  # - variable: GOOGLE_ADS_CLIENT_ID
-  #   secret: ADAGENT_GOOGLE_ADS_CLIENT_ID
-  # - variable: GOOGLE_ADS_CLIENT_SECRET
-  #   secret: ADAGENT_GOOGLE_ADS_CLIENT_SECRET
-  # - variable: GOOGLE_ADS_DEVELOPER_TOKEN
-  #   secret: ADAGENT_GOOGLE_ADS_DEVELOPER_TOKEN
+  - variable: GOOGLE_ADS_CLIENT_ID
+    secret: ADAGENT_GOOGLE_ADS_CLIENT_ID
+  - variable: GOOGLE_ADS_CLIENT_SECRET
+    secret: ADAGENT_GOOGLE_ADS_CLIENT_SECRET
+  - variable: GOOGLE_ADS_DEVELOPER_TOKEN
+    secret: ADAGENT_GOOGLE_ADS_DEVELOPER_TOKEN
   # - variable: META_ADS_APP_ID
   #   secret: ADAGENT_META_ADS_APP_ID
   # - variable: META_ADS_APP_SECRET

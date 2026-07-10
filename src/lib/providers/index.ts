@@ -6,6 +6,7 @@ import { createMetaProvider } from "./meta";
 import { createTiktokProvider } from "./tiktok";
 import { createYahooProvider } from "./yahoo";
 import { createXProvider } from "./x";
+import { createLineProvider } from "./line";
 
 export type { AdProvider, ProviderConnection, SyncResult, TokenSet } from "./types";
 export { ProviderError } from "./types";
@@ -18,6 +19,7 @@ const API_PROVIDERS: Record<PlatformId, () => AdProvider> = {
   instagram: () => createMetaProvider("instagram"),
   x: createXProvider,
   tiktok: createTiktokProvider,
+  line: createLineProvider,
 };
 
 // mode=demo はデモデータ生成、mode=api は実APIアダプタを返す

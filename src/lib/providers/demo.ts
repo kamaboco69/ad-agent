@@ -68,6 +68,11 @@ const TEMPLATES: Record<PlatformId, CampaignTemplate[]> = {
     { name: "【CV】スパーク広告", objective: "sales", dailyBudgetYen: 9000, ctr: 0.014, cpcYen: 65, cvr: 0.012, aovYen: 6800 },
     { name: "【リーチ】インフィード動画", objective: "awareness", dailyBudgetYen: 5000, ctr: 0.010, cpcYen: 40, cvr: 0.002, aovYen: 0 },
   ],
+  line: [
+    { name: "【CV】ウェブサイトコンバージョン", objective: "sales", dailyBudgetYen: 8000, ctr: 0.008, cpcYen: 55, cvr: 0.015, aovYen: 8500 },
+    { name: "【友だち追加】CPF配信", objective: "leads", dailyBudgetYen: 5000, ctr: 0.011, cpcYen: 75, cvr: 0.04, aovYen: 0 },
+    { name: "【認知】トークリスト面リーチ", objective: "awareness", dailyBudgetYen: 3000, ctr: 0.006, cpcYen: 45, cvr: 0.001, aovYen: 0 },
+  ],
 };
 
 // 曜日係数（JSTの土日はECが伸びる想定の緩い季節性）
@@ -81,6 +86,7 @@ export function demoAccountName(platform: PlatformId): string {
     instagram: "デモアカウント（Instagram）",
     x: "デモアカウント（X）",
     tiktok: "デモアカウント（TikTok）",
+    line: "デモアカウント（LINE）",
   };
   return names[platform];
 }

@@ -1,7 +1,7 @@
 // 対応する広告媒体の定義（ID・表示名・ブランドカラー・実API接続に必要な環境変数）。
 // UI とプロバイダ層の両方から参照する唯一の媒体レジストリ。
 
-export const PLATFORM_IDS = ["google", "yahoo", "meta", "instagram", "x", "tiktok"] as const;
+export const PLATFORM_IDS = ["google", "yahoo", "meta", "instagram", "x", "tiktok", "line"] as const;
 export type PlatformId = (typeof PLATFORM_IDS)[number];
 
 export interface PlatformDef {
@@ -68,6 +68,15 @@ export const PLATFORMS: Record<PlatformId, PlatformDef> = {
     envKeys: ["TIKTOK_ADS_APP_ID", "TIKTOK_ADS_APP_SECRET"],
     apiName: "TikTok Business API",
     note: "TikTok for Business 開発者アプリの審査承認が必要",
+  },
+  line: {
+    id: "line",
+    label: "LINE 広告",
+    short: "LINE",
+    color: "#06C755", // Yahoo!赤とは明度差で判別（LINEブランド緑）
+    envKeys: ["LINE_ADS_ACCESS_KEY", "LINE_ADS_SECRET_KEY"],
+    apiName: "LINE Ads API",
+    note: "API 利用申請の承認が必要（キー署名方式のため接続方式が他媒体と異なる）",
   },
 };
 

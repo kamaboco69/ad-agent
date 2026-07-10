@@ -26,19 +26,25 @@ interface CampaignAgg extends Omit<PlatformAgg, "platform" | "label"> {
   dailyBudgetYen: number | null;
 }
 
+type PeriodAgg = Omit<PlatformAgg, "platform" | "label">;
+
 export interface MetricsSummary {
   periodStart: Date;
   periodEnd: Date;
   days: number;
-  total: Omit<PlatformAgg, "platform" | "label">;
+  total: PeriodAgg;
   byPlatform: PlatformAgg[];
   byCampaign: CampaignAgg[];
+  // 前期（直近期間の直前・同じ長さ）の比較用集計。前期に実績がなければ null
+  prevTotal: PeriodAgg | null;
+  prevByPlatform: Map<string, PeriodAgg>;
 }
 
-// 直近 days 日の実績を媒体別・キャンペーン別に集計
+// 直近 days 日の実績を媒体別・キャンペーン別に集計（前期比較用に直前の同じ長さの期間も集計）
 export async function buildMetricsSummary(organizationId: string, days = 30): Promise<MetricsSummary | null> {
   const end = new Date();
   const start = new Date(end.getTime() - days * 86400_000);
+  const prevStart = new Date(end.getTime() - 2 * days * 86400_000);
 
   const metrics = await prisma.dailyMetric.findMany({
     where: { organizationId, date: { gte: start } },
@@ -60,6 +66,36 @@ export async function buildMetricsSummary(organizationId: string, days = 30): Pr
     },
   });
   if (metrics.length === 0) return null;
+
+  // 前期分（トレンド比較用。媒体別まで）
+  const prevMetrics = await prisma.dailyMetric.findMany({
+    where: { organizationId, date: { gte: prevStart, lt: start } },
+    select: {
+      impressions: true,
+      clicks: true,
+      costYen: true,
+      conversions: true,
+      conversionValueYen: true,
+      campaign: { select: { connection: { select: { platform: true } } } },
+    },
+  });
+  const prevTotal: PeriodAgg = { costYen: 0, impressions: 0, clicks: 0, conversions: 0, conversionValueYen: 0 };
+  const prevByPlatform = new Map<string, PeriodAgg>();
+  for (const m of prevMetrics) {
+    const platform = m.campaign.connection.platform;
+    prevTotal.costYen += m.costYen;
+    prevTotal.impressions += m.impressions;
+    prevTotal.clicks += m.clicks;
+    prevTotal.conversions += m.conversions;
+    prevTotal.conversionValueYen += m.conversionValueYen;
+    const p = prevByPlatform.get(platform) ?? { costYen: 0, impressions: 0, clicks: 0, conversions: 0, conversionValueYen: 0 };
+    p.costYen += m.costYen;
+    p.impressions += m.impressions;
+    p.clicks += m.clicks;
+    p.conversions += m.conversions;
+    p.conversionValueYen += m.conversionValueYen;
+    prevByPlatform.set(platform, p);
+  }
 
   const total = { costYen: 0, impressions: 0, clicks: 0, conversions: 0, conversionValueYen: 0 };
   const platformMap = new Map<string, PlatformAgg>();
@@ -115,7 +151,23 @@ export async function buildMetricsSummary(organizationId: string, days = 30): Pr
     total,
     byPlatform: [...platformMap.values()].sort((a, b) => b.costYen - a.costYen),
     byCampaign: [...campaignMap.values()].sort((a, b) => b.costYen - a.costYen),
+    prevTotal: prevMetrics.length > 0 ? prevTotal : null,
+    prevByPlatform,
   };
+}
+
+// 前期比の増減表記（前期実績がない・0のときは "—"）
+function pct(cur: number, prev: number | undefined): string {
+  if (!prev) return "—";
+  const diff = ((cur - prev) / prev) * 100;
+  return `${diff >= 0 ? "+" : ""}${diff.toFixed(0)}%`;
+}
+
+function trendRow(cur: PeriodAgg, prev: PeriodAgg | undefined): string {
+  if (!prev) return "前期データなし";
+  const curCpa = cur.conversions ? cur.costYen / cur.conversions : 0;
+  const prevCpa = prev.conversions ? prev.costYen / prev.conversions : 0;
+  return `消化額 ${pct(cur.costYen, prev.costYen)} / Click ${pct(cur.clicks, prev.clicks)} / CV ${pct(cur.conversions, prev.conversions)} / CPA ${curCpa && prevCpa ? pct(curCpa, prevCpa) : "—"}`;
 }
 
 function fmtRow(a: { costYen: number; impressions: number; clicks: number; conversions: number; conversionValueYen: number }) {
@@ -131,9 +183,14 @@ export function summaryToText(s: MetricsSummary): string {
   const lines: string[] = [];
   lines.push(`期間: 直近${s.days}日（〜${s.periodEnd.toISOString().slice(0, 10)}）`);
   lines.push(`全体: ${fmtRow(s.total)}`);
+  if (s.prevTotal) lines.push(`全体の前期比（その前の${s.days}日と比較）: ${trendRow(s.total, s.prevTotal)}`);
   lines.push("");
   lines.push("【媒体別】");
-  for (const p of s.byPlatform) lines.push(`- ${p.label}: ${fmtRow(p)}`);
+  for (const p of s.byPlatform) {
+    lines.push(`- ${p.label}: ${fmtRow(p)}`);
+    const prev = s.prevByPlatform.get(p.platform);
+    if (prev) lines.push(`  前期比: ${trendRow(p, prev)}`);
+  }
   lines.push("");
   lines.push("【キャンペーン別（消化額上位20）】");
   for (const c of s.byCampaign.slice(0, 20)) {
@@ -157,6 +214,7 @@ const SYSTEM_PROMPT = `あなたは日本の広告運用コンサルタントで
 ルール:
 - 数値は必ず渡されたデータに基づくこと。推測の数値を作らない。
 - CV価値が0の認知系キャンペーンをCPA/ROASで断罪しない（目的が違う）。
+- 前期比が渡されている場合は、悪化している媒体・指標（CPA上昇、CV減少など）を最優先で改善アクションに反映する。
 - 冗長にしない。全体で600字〜1000字程度。`;
 
 export interface GenerateInsightOptions {
@@ -189,7 +247,8 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
     .trim();
   if (!body) throw new Error("分析結果の生成に失敗しました");
 
-  const title = `運用改善レポート（直近${days}日）`;
+  const title =
+    opts.source === "cron" ? `週次運用改善レポート（直近${days}日）` : `運用改善レポート（直近${days}日）`;
   return prisma.insight.create({
     data: {
       organizationId,
@@ -202,6 +261,51 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
       source: opts.source ?? "manual",
     },
   });
+}
+
+// 週次の自動改善レポート生成（cron から呼ばれる）。
+// 毎週月曜（JST）に、実績データのある全組織へ改善提案を生成する。
+// 同一組織に直近3日以内の cron 製レポートがあればスキップ（同日2回のcron実行や再試行での重複防止）。
+// force=true でゲートを無視して即生成（動作確認用。CRON_SECRET 保護下でのみ到達）。
+export async function runWeeklyInsights(force = false): Promise<{ generated: number; skipped: number }> {
+  if (!aiConfigured()) return { generated: 0, skipped: 0 };
+
+  const nowJst = new Date(Date.now() + 9 * 3600_000);
+  if (!force && nowJst.getUTCDay() !== 1) return { generated: 0, skipped: 0 }; // 月曜のみ
+
+  const orgs = await prisma.adConnection.findMany({
+    where: { status: { not: "revoked" } },
+    select: { organizationId: true },
+    distinct: ["organizationId"],
+  });
+
+  let generated = 0;
+  let skipped = 0;
+  for (const { organizationId } of orgs) {
+    if (!force) {
+      const recent = await prisma.insight.findFirst({
+        where: {
+          organizationId,
+          kind: "recommendation",
+          source: "cron",
+          createdAt: { gte: new Date(Date.now() - 3 * 86400_000) },
+        },
+        select: { id: true },
+      });
+      if (recent) {
+        skipped++;
+        continue;
+      }
+    }
+    try {
+      await generateInsight(organizationId, { days: 30, source: "cron" });
+      generated++;
+    } catch {
+      // 実績データなし等はスキップ（接続直後の組織など）
+      skipped++;
+    }
+  }
+  return { generated, skipped };
 }
 
 // 月予算に対する消化ペースを監視し、超過見込みなら alert Insight を作る（AI不使用）。

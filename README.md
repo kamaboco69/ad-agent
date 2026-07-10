@@ -51,6 +51,7 @@ Authorization: Bearer <CRON_SECRET>
 
 - `task=sync` … 全接続の実績同期（直近14日を上書き取得）
 - `task=alerts` … 月予算の消化ペース監視（超過見込みでアラート生成）
+- `task=insights` … 週次AI改善レポートの自動生成（毎週月曜JSTのみ。`&force=1` で即時生成）
 
 ## デプロイ（Firebase App Hosting）
 

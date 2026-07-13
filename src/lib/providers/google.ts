@@ -111,6 +111,61 @@ function loginCid(conn: ProviderConnection): string {
   return (conn.loginCustomerId ?? conn.externalAccountId ?? "").replace(/-/g, "");
 }
 
+// アクセス可能なアカウントを列挙し、MCC は配下の運用アカウント（非マネージャー）に展開する。
+// 返り値の先頭が「接続既定」として使われるため、運用アカウントのみを追加する（フォールバック除く）。
+async function enumerateAccounts(token: string): Promise<SelectableAccount[]> {
+  const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
+    headers: adsHeaders(token),
+  });
+  const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
+  if (!listRes.ok) {
+    throw new ProviderError(`アカウント一覧の取得に失敗: ${list.error?.message ?? `HTTP ${listRes.status}`}`);
+  }
+  const accessible = (list.resourceNames ?? []).map((r) => r.replace("customers/", ""));
+
+  const out: SelectableAccount[] = [];
+  const seen = new Set<string>();
+  const add = (a: SelectableAccount) => {
+    if (a.id && !seen.has(a.id)) {
+      seen.add(a.id);
+      out.push(a);
+    }
+  };
+
+  for (const acc of accessible) {
+    try {
+      const info = await gaqlSearch(
+        token,
+        acc,
+        "SELECT customer.id, customer.descriptive_name, customer.manager FROM customer",
+        acc
+      );
+      const c = info[0]?.customer;
+      const name = c?.descriptiveName || `アカウント ${acc}`;
+      if (c?.manager !== true) {
+        add({ id: acc, loginCustomerId: null, name });
+        continue;
+      }
+      // マネージャー(MCC)の場合は配下の運用アカウント（非マネージャー）を列挙
+      const clients = await gaqlSearch(
+        token,
+        acc,
+        "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.level FROM customer_client WHERE customer_client.level <= 1",
+        acc
+      );
+      for (const row of clients) {
+        const cc = row.customerClient;
+        if (!cc?.id || cc.manager === true) continue;
+        add({ id: String(cc.id), loginCustomerId: acc, name: cc.descriptiveName || `アカウント ${cc.id}` });
+      }
+    } catch {
+      // 個別アカウントの取得に失敗しても一覧全体は返す（フォールバックで生IDを追加）
+      add({ id: acc, loginCustomerId: null, name: `アカウント ${acc}` });
+    }
+  }
+  return out;
+}
+
 export function createGoogleProvider(): AdProvider {
   return {
     platform: "google",
@@ -149,80 +204,43 @@ export function createGoogleProvider(): AdProvider {
       };
       if (!json.access_token) throw new ProviderError(`Google トークン交換に失敗: ${json.error_description ?? "unknown"}`);
 
-      // アクセス可能なお客様アカウントの先頭を既定の接続先にする
-      const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
-        headers: adsHeaders(json.access_token),
-      });
-      const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
-      const first = list.resourceNames?.[0]?.replace("customers/", "");
-      if (!first) {
-        throw new ProviderError(
-          `アクセス可能な Google 広告アカウントが見つかりません: ${list.error?.message ?? `HTTP ${listRes.status}`}`
-        );
+      // 接続先の既定は「最初の運用（非マネージャー）アカウント」。
+      // MCC を既定にすると実績クエリが必ず失敗するため、列挙して運用アカウントを優先する。
+      let picked: SelectableAccount | null = null;
+      try {
+        const accounts = await enumerateAccounts(json.access_token);
+        picked = accounts[0] ?? null;
+      } catch {
+        // 列挙に失敗しても接続自体は成立させる（下のフォールバックへ）
+      }
+      if (!picked) {
+        const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
+          headers: adsHeaders(json.access_token),
+        });
+        const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
+        const first = list.resourceNames?.[0]?.replace("customers/", "");
+        if (!first) {
+          throw new ProviderError(
+            `アクセス可能な Google 広告アカウントが見つかりません: ${list.error?.message ?? `HTTP ${listRes.status}`}`
+          );
+        }
+        picked = { id: first, loginCustomerId: null, name: `Google 広告 ${first}` };
       }
 
       return {
         accessToken: json.access_token,
         refreshToken: json.refresh_token,
         expiresAt: json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : undefined,
-        externalAccountId: first,
-        accountName: `Google 広告 ${first}`,
+        externalAccountId: picked.id,
+        accountName: picked.name,
+        loginCustomerId: picked.loginCustomerId,
       };
     },
 
     // 接続ユーザーがアクセス可能な運用アカウントを列挙（MCC配下も展開）。UIのアカウント選択で使用。
     async listAccounts(conn): Promise<SelectableAccount[]> {
       const token = await freshToken(conn);
-      const listRes = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
-        headers: adsHeaders(token),
-      });
-      const list = (await listRes.json().catch(() => ({}))) as { resourceNames?: string[]; error?: { message?: string } };
-      if (!listRes.ok) {
-        throw new ProviderError(`アカウント一覧の取得に失敗: ${list.error?.message ?? `HTTP ${listRes.status}`}`);
-      }
-      const accessible = (list.resourceNames ?? []).map((r) => r.replace("customers/", ""));
-
-      const out: SelectableAccount[] = [];
-      const seen = new Set<string>();
-      const add = (a: SelectableAccount) => {
-        if (a.id && !seen.has(a.id)) {
-          seen.add(a.id);
-          out.push(a);
-        }
-      };
-
-      for (const acc of accessible) {
-        try {
-          const info = await gaqlSearch(
-            token,
-            acc,
-            "SELECT customer.id, customer.descriptive_name, customer.manager FROM customer",
-            acc
-          );
-          const c = info[0]?.customer;
-          const name = c?.descriptiveName || `アカウント ${acc}`;
-          if (c?.manager !== true) {
-            add({ id: acc, loginCustomerId: null, name });
-            continue;
-          }
-          // マネージャー(MCC)の場合は配下の運用アカウント（非マネージャー）を列挙
-          const clients = await gaqlSearch(
-            token,
-            acc,
-            "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.level FROM customer_client WHERE customer_client.level <= 1",
-            acc
-          );
-          for (const row of clients) {
-            const cc = row.customerClient;
-            if (!cc?.id || cc.manager === true) continue;
-            add({ id: String(cc.id), loginCustomerId: acc, name: cc.descriptiveName || `アカウント ${cc.id}` });
-          }
-        } catch {
-          // 個別アカウントの取得に失敗しても一覧全体は返す（フォールバックで生IDを追加）
-          add({ id: acc, loginCustomerId: null, name: `アカウント ${acc}` });
-        }
-      }
-      return out;
+      return enumerateAccounts(token);
     },
 
     async sync(conn, days): Promise<SyncResult> {

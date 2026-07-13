@@ -37,6 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ plat
         status: "connected",
         accountName: token.accountName ?? `${platform} アカウント`,
         externalAccountId: token.externalAccountId,
+        loginCustomerId: token.loginCustomerId ?? null,
         accessToken: encryptSecret(token.accessToken),
         refreshToken: token.refreshToken ? encryptSecret(token.refreshToken) : null,
         tokenExpiresAt: token.expiresAt,

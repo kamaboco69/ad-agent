@@ -49,9 +49,10 @@ export interface TokenSet {
   refreshToken?: string;
   expiresAt?: Date;
   scope?: string;
-  // トークン取得後にアカウント一覧から解決した接続先（先頭アカウントを既定にする）
+  // トークン取得後にアカウント一覧から解決した接続先（Googleは最初の非マネージャーを既定にする）
   externalAccountId?: string;
   accountName?: string;
+  loginCustomerId?: string | null; // MCC経由で接続する場合の親マネージャーID
 }
 
 // 広告媒体アダプタの共通インターフェース。

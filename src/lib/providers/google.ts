@@ -297,10 +297,13 @@ export function createGoogleProvider(): AdProvider {
       // スマートキャンペーン分（無いアカウントではエラーになり得るため個別に握りつぶす）
       let smartRows: SearchRow[] = [];
       try {
+        // 注意: このビューでは metrics.conversions / conversions_value は選択禁止
+        // （PROHIBITED_METRIC_IN_SELECT_OR_WHERE_CLAUSE になる）。CVは0扱いで集計する。
         smartRows = await gaqlSearch(
           token,
           customerId,
-          `SELECT smart_campaign_search_term_view.search_term, campaign.id, campaign.name, ${metricsSel}
+          `SELECT smart_campaign_search_term_view.search_term, campaign.id, campaign.name,
+                  metrics.impressions, metrics.clicks, metrics.cost_micros
            FROM smart_campaign_search_term_view
            WHERE ${range}
            LIMIT 500`,

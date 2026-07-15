@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOrgContext, unauthorizedResponse } from "@/lib/auth-helpers";
 import { syncConnection, DEFAULT_SYNC_DAYS } from "@/lib/sync";
+import { logChange } from "@/lib/rules";
 
 // 接続設定の更新（月予算・表示名・接続アカウントの変更）
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -20,6 +21,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     externalAccountId?: string;
     loginCustomerId?: string | null;
     autoExclude?: boolean;
+    targetCpaYen?: number | null;
+    targetRoas?: number | null;
   };
 
   // 接続アカウントの変更（実API接続のみ）: 対象を切り替え、旧アカウントのデータを消して再同期
@@ -53,9 +56,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data.accountName = body.accountName.trim();
   }
   if (typeof body.autoExclude === "boolean") data.autoExclude = body.autoExclude;
+  if (body.targetCpaYen === null) data.targetCpaYen = null;
+  if (typeof body.targetCpaYen === "number" && body.targetCpaYen > 0) data.targetCpaYen = Math.round(body.targetCpaYen);
+  if (body.targetRoas === null) data.targetRoas = null;
+  if (typeof body.targetRoas === "number" && body.targetRoas > 0) data.targetRoas = Math.round(body.targetRoas);
   if (Object.keys(data).length === 0) return Response.json({ error: "変更内容がありません" }, { status: 400 });
 
   const updated = await prisma.adConnection.update({ where: { id }, data });
+
+  // 変更ログへ自動起票（運用ルール§0。表示名変更・自動除外トグルは対象外）
+  const yen = (v: number | null | undefined) => (v ? `¥${v.toLocaleString()}` : "未設定");
+  const logs: Array<{ kind: string; detail: string }> = [];
+  if ("monthlyBudgetYen" in data)
+    logs.push({ kind: "monthlyBudget", detail: `月予算 ${yen(conn.monthlyBudgetYen)} → ${yen(updated.monthlyBudgetYen)}` });
+  if ("targetCpaYen" in data)
+    logs.push({ kind: "target", detail: `目標CPA ${yen(conn.targetCpaYen)} → ${yen(updated.targetCpaYen)}` });
+  if ("targetRoas" in data)
+    logs.push({
+      kind: "target",
+      detail: `目標ROAS ${conn.targetRoas ? conn.targetRoas + "%" : "未設定"} → ${updated.targetRoas ? updated.targetRoas + "%" : "未設定"}`,
+    });
+  for (const l of logs) {
+    await logChange({ organizationId: ctx.organizationId, connectionId: id, ...l });
+  }
+
   return Response.json({ connection: { id: updated.id, monthlyBudgetYen: updated.monthlyBudgetYen } });
 }
 

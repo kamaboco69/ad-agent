@@ -1,0 +1,150 @@
+<title>Ad Agent 運用ルールエンジン 設計書</title>
+<style>
+:root{
+  --bg:#f7f9fb; --surface:#ffffff; --ink:#16202b; --muted:#5b6b7c; --line:#dbe4ec;
+  --accent:#0369a1; --accent-soft:#e3f1fa;
+  --ok:#047857; --ok-bg:#e7f5ef; --warn:#b45309; --warn-bg:#fdf3e3; --crit:#b91c1c; --crit-bg:#fdecec;
+  --mono:ui-monospace,"SF Mono",Consolas,"Courier New",monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0b1117; --surface:#111927; --ink:#e6edf4; --muted:#8fa1b3; --line:#24303d;
+  --accent:#4cc3f7; --accent-soft:#0e2436;
+  --ok:#34d399; --ok-bg:#0c2b21; --warn:#fbbf24; --warn-bg:#2d2210; --crit:#f87171; --crit-bg:#331416;
+}}
+:root[data-theme="dark"]{
+  --bg:#0b1117; --surface:#111927; --ink:#e6edf4; --muted:#8fa1b3; --line:#24303d;
+  --accent:#4cc3f7; --accent-soft:#0e2436;
+  --ok:#34d399; --ok-bg:#0c2b21; --warn:#fbbf24; --warn-bg:#2d2210; --crit:#f87171; --crit-bg:#331416;
+}
+:root[data-theme="light"]{
+  --bg:#f7f9fb; --surface:#ffffff; --ink:#16202b; --muted:#5b6b7c; --line:#dbe4ec;
+  --accent:#0369a1; --accent-soft:#e3f1fa;
+  --ok:#047857; --ok-bg:#e7f5ef; --warn:#b45309; --warn-bg:#fdf3e3; --crit:#b91c1c; --crit-bg:#fdecec;
+}
+body{background:var(--bg);color:var(--ink);font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif;line-height:1.85;margin:0;}
+.wrap{max-width:40em;margin:0 auto;padding:3rem 1.25rem 5rem;}
+.eyebrow{font-size:.72rem;letter-spacing:.14em;color:var(--accent);font-weight:700;}
+h1{font-size:1.7rem;line-height:1.4;margin:.3rem 0 .4rem;text-wrap:balance;}
+.meta{color:var(--muted);font-size:.82rem;margin-bottom:2.2rem;}
+h2{font-size:1.15rem;margin:3rem 0 .8rem;padding-top:1.2rem;border-top:1px solid var(--line);text-wrap:balance;}
+h2 .no{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:.5em;}
+h3{font-size:.95rem;margin:1.6rem 0 .5rem;}
+p{margin:.6rem 0;}
+ul,ol{padding-left:1.4em;margin:.6rem 0;}
+li{margin:.25rem 0;}
+.toc{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:1rem 1.3rem;font-size:.88rem;}
+.toc a{color:var(--accent);text-decoration:none;}
+.toc a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:1rem 0;}
+table{border-collapse:collapse;width:100%;font-size:.84rem;line-height:1.6;}
+th{font-size:.74rem;letter-spacing:.06em;color:var(--muted);text-align:left;font-weight:600;}
+th,td{padding:.55rem .8rem;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap;}
+td.wide,th.wide{white-space:normal;min-width:14em;}
+tr:last-child td{border-bottom:none;}
+.chip{display:inline-block;font-size:.72rem;font-weight:700;border-radius:999px;padding:.05rem .55rem;white-space:nowrap;}
+.l0{background:var(--line);color:var(--muted);}
+.l1{background:var(--accent-soft);color:var(--accent);}
+.l2{background:var(--warn-bg);color:var(--warn);}
+.l3{background:var(--crit-bg);color:var(--crit);}
+.done{background:var(--ok-bg);color:var(--ok);}
+.note{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:.8rem 1.1rem;font-size:.88rem;margin:1rem 0;}
+.decide{background:var(--warn-bg);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:8px;padding:.8rem 1.1rem;font-size:.9rem;margin:1rem 0;}
+code{font-family:var(--mono);font-size:.85em;background:var(--accent-soft);border-radius:4px;padding:.08em .35em;}
+.num{font-variant-numeric:tabular-nums;}
+</style>
+<div class="wrap">
+<p class="eyebrow">AD AGENT — 設計レビュー</p>
+<h1>運用ルールエンジン 設計書</h1>
+<p class="meta">対象: Google広告 運用ルール・手順書（2026年7月版）の自動化 ／ 作成: 2026-07-16 ／ ステータス: <strong>レビュー待ち</strong></p>
+
+<div class="toc">
+<strong>目次</strong><br>
+<a href="#s1">1. 目的と方針</a> ／ <a href="#s2">2. 自動化レベルの定義</a> ／ <a href="#s3">3. データモデル</a> ／ <a href="#s4">4. cron 設計</a> ／ <a href="#s5">5. 手順書→機能マッピング</a> ／ <a href="#s6">6. 安全設計</a> ／ <a href="#s7">7. 通知設計</a> ／ <a href="#s8">8. 段階導入計画</a> ／ <a href="#s9">9. 自動化の対象外</a> ／ <a href="#s10">10. 決めどころ</a>
+</div>
+
+<h2 id="s1"><span class="no">1.</span>目的と方針</h2>
+<p>手順書に定義された日次・週次・月次の運用ルールを Ad Agent のルールエンジンとして実装し、<strong>観測・検知・記録は完全自動、広告への変更操作は「安全なものだけ自動・それ以外は提案止まり」</strong>にする。手順書の大原則（計測第一・1変更1検証・記録・データ量・役割分担）をコードの制約として埋め込む。</p>
+
+<h2 id="s2"><span class="no">2.</span>自動化レベルの定義</h2>
+<p>機能ごとに4段階のレベルを定義し、接続（広告アカウント）単位で設定できるようにする。</p>
+<div class="tbl"><table>
+<tr><th>レベル</th><th class="wide">意味</th><th class="wide">例</th></tr>
+<tr><td><span class="chip l0">L0 記録</span></td><td class="wide">観測してログに残すだけ</td><td class="wide">変更ログ、日次スナップショット</td></tr>
+<tr><td><span class="chip l1">L1 検知・提案</span></td><td class="wide">異常や改善余地を検知してアラート・提案を出す（変更しない）</td><td class="wide">予算消化±10%乖離、CPA目標2倍超、予算再配分案</td></tr>
+<tr><td><span class="chip l2">L2 ワンクリック</span></td><td class="wide">提案に「適用」ボタンが付き、人が承認して実行</td><td class="wide">除外推奨の一括除外、昇格キーワード登録</td></tr>
+<tr><td><span class="chip l3">L3 全自動</span></td><td class="wide">条件を満たすものは自動実行し、事後レポートで報告</td><td class="wide">CV0語句の自動除外（実装済み）</td></tr>
+</table></div>
+<div class="note">既定値の原則: <strong>お金が減る方向・学習を壊す方向の操作は L2 まで</strong>。L3 に上げられるのは「実施しても損失が出ない」ことが構造的に保証できる操作のみ（例: CV0 語句の除外）。レベル変更は接続ごとのトグルで、すべて変更ログに記録される。</div>
+
+<h2 id="s3"><span class="no">3.</span>データモデル（追加分）</h2>
+<div class="tbl"><table>
+<tr><th>モデル / 列</th><th class="wide">内容</th></tr>
+<tr><td><code>AdConnection</code> 拡張</td><td class="wide"><code>targetCpaYen</code>（目標CPA）・<code>targetRoas</code>（目標ROAS%）・<code>learningGuardMode</code>（warn / block）・<code>autoExclude</code>（実装済み）・<code>autoPromote</code>・<code>autoBudget</code>（当面 false 固定 = L1）</td></tr>
+<tr><td><code>ChangeLog</code> 新規</td><td class="wide">変更日時・接続・キャンペーン・変更内容（種別 / 変更前 / 変更後）・理由・実行者（user / auto）・<strong>確認予定日</strong>（+14日）・確認結果（自動記入）。アプリ経由の全変更＋Google側変更（change_event 同期）を記録</td></tr>
+<tr><td><code>Campaign</code> 拡張</td><td class="wide"><code>brandTag</code>（brand / nonbrand / unknown）。AIがキャンペーン名から初期判定し、UIで修正可能。指名/非指名の分離レポートに使用</td></tr>
+<tr><td><code>DailySnapshot</code> 新規</td><td class="wide">接続×日の消化・CV・CPA を日次保存（前日比±30%判定と、変更ログの前後比較検証に使用）</td></tr>
+</table></div>
+
+<h2 id="s4"><span class="no">4.</span>cron 設計（Cloud Scheduler は既存の2回/日をそのまま利用）</h2>
+<div class="tbl"><table>
+<tr><th>タスク</th><th>実行タイミング</th><th class="wide">処理内容</th></tr>
+<tr><td><code>daily-check</code></td><td>毎日 9:00</td><td class="wide">§1 日次: 予算消化ペース±10%乖離 / 主要指標の前日比±30% / CV丸1日ゼロ（成果悪化でなく計測疑いとして通知）/ §9 緊急時: CPA目標2倍超×3日・予算異常 → アラート生成</td></tr>
+<tr><td><code>verify-changes</code></td><td>毎日 9:00</td><td class="wide">§0: 確認予定日が到来した変更ログについて、変更前14日 vs 変更後14日を自動比較し確認結果を記入・レポート</td></tr>
+<tr><td><code>weekly</code></td><td>月曜 9:00</td><td class="wide">既存（同期→AI分類→自動除外→週次AIレポート）＋ §2-A 昇格候補抽出（CV2件以上）→ L2提案 ＋ §2-E 予算再配分案（+20%上限）→ L1提案。週次レポートに「実施したアクション」（変更ログから自動転記）を併記</td></tr>
+<tr><td><code>monthly</code></td><td>毎月1日 9:00</td><td class="wide">§3・§10: 目標対比（targetCpa / targetRoas）・指名/非指名分離・除外リスト棚卸しリマインド・翌月アクション付き月次レビューを生成</td></tr>
+</table></div>
+
+<h2 id="s5"><span class="no">5.</span>手順書 → 機能マッピング（初期閾値は手順書の値）</h2>
+<div class="tbl"><table>
+<tr><th>手順書</th><th class="wide">機能</th><th>レベル</th><th>状態</th></tr>
+<tr><td>§0 変更ログ</td><td class="wide">全変更の自動起票＋<span class="num">14</span>日後の効果自動検証</td><td><span class="chip l0">L0</span>＋<span class="chip l1">L1</span></td><td>Phase 1</td></tr>
+<tr><td>§1 日次チェック</td><td class="wide">予算±<span class="num">10</span>%・指標±<span class="num">30</span>%・CVゼロ<span class="num">24</span>h 検知</td><td><span class="chip l1">L1</span></td><td>Phase 1</td></tr>
+<tr><td>§2-A 語句の除外</td><td class="wide">AI分類→CV0のみ自動除外（クリック<span class="num">30</span>回以上CV0 / CPA目標<span class="num">2</span>倍超を除外基準に反映）</td><td><span class="chip l3">L3</span></td><td><span class="chip done">実装済み</span>（閾値調整のみ）</td></tr>
+<tr><td>§2-A 語句の昇格</td><td class="wide">CV<span class="num">2</span>件以上の語句→完全一致キーワード登録の提案</td><td><span class="chip l2">L2</span></td><td>Phase 2</td></tr>
+<tr><td>§2-E 予算再配分</td><td class="wide">好調CPの増額案（1回+<span class="num">20</span>%以内）・不調CPの原因特定を優先</td><td><span class="chip l1">L1</span>→将来<span class="chip l2">L2</span></td><td>Phase 2</td></tr>
+<tr><td>§4 学習期間保護</td><td class="wide">変更後<span class="num">2</span>週間 or 新規CV<span class="num">50</span>件までの大変更を警告/ブロック（モード選択）</td><td><span class="chip l1">L1</span></td><td>警告は実装済み→Phase 3でブロック</td></tr>
+<tr><td>§5 計測ヘルス</td><td class="wide">主要/サブ区分・値・カウント方法・DDA の診断項目を拡充</td><td><span class="chip l1">L1</span></td><td>基本版実装済み→Phase 3拡充</td></tr>
+<tr><td>§6 指名/非指名</td><td class="wide">キャンペーンのAIタグ付け＋分離レポート（指名込み報告の禁止を実装）</td><td><span class="chip l1">L1</span></td><td>Phase 2</td></tr>
+<tr><td>§8 レッドライン</td><td class="wide">禁止事項をアプリの制約として実装（§6 安全設計）</td><td>—</td><td>全Phase</td></tr>
+<tr><td>§9 緊急時</td><td class="wide">CPA<span class="num">2</span>倍×<span class="num">3</span>日・予算異常・CVゼロの検知と対応手順の提示</td><td><span class="chip l1">L1</span></td><td>Phase 1</td></tr>
+<tr><td>§10 レポート</td><td class="wide">週次（前週比＋実施アクション）/ 月次（目標対比・翌月アクション）</td><td><span class="chip l1">L1</span></td><td>週次実装済み→Phase 1/3で拡張</td></tr>
+</table></div>
+
+<h2 id="s6"><span class="no">6.</span>安全設計（レッドラインの実装）</h2>
+<ul>
+<li><strong>CVが1件でも付いた語句は自動除外しない</strong>（実装済み）。除外は常に上限<span class="num">30</span>件/回。</li>
+<li><strong>自動の変更操作は週1回まで・1接続1種類まで</strong>（1変更1検証をコードで強制）。</li>
+<li>予算・目標値の変更幅は±<span class="num">20</span>%を上限とし、超える指示はUIでも拒否。</li>
+<li>学習期間中（直近変更から2週間以内 or CV50件未満）の大変更は警告、blockモードでは実行不可。</li>
+<li>自動実行はすべて変更ログ＋AIインサイトに記録され、除外キーワード等は媒体側からいつでも戻せる。</li>
+<li>計測異常（CVゼロ検知）中は、自動除外・自動予算変更を<strong>一時停止</strong>（計測第一の原則）。</li>
+</ul>
+
+<h2 id="s7"><span class="no">7.</span>通知設計</h2>
+<p>AIインサイト欄を通知センターとして使う（既存）。アラートは重要度（info / warn / critical）を持ち、critical（CVゼロ・予算異常・不承認検知）は将来 LINE / Discord 連携で即時プッシュ可能にする（AI Company の既存 LINE 基盤を流用可能）。</p>
+
+<h2 id="s8"><span class="no">8.</span>段階導入計画</h2>
+<div class="tbl"><table>
+<tr><th>Phase</th><th class="wide">スコープ</th><th class="wide">完了条件</th></tr>
+<tr><td>1</td><td class="wide">目標CPA/ROAS設定・日次異常検知・変更ログ（自動起票＋14日後検証）・週次レポートにアクション併記</td><td class="wide">日次アラートが実データで発火し、変更→14日後の自動検証レポートが1件生成される</td></tr>
+<tr><td>2</td><td class="wide">語句昇格（L2）・予算再配分提案（L1）・指名/非指名タグと分離レポート</td><td class="wide">昇格提案から完全一致キーワードが登録でき、週次レポートが指名/非指名分離で出る</td></tr>
+<tr><td>3</td><td class="wide">月次レビュー自動生成・学習期間ハードガード・計測ヘルス拡充（DDA/カウント方法/主要サブ）</td><td class="wide">月初に目標対比レビューが自動生成される</td></tr>
+</table></div>
+
+<h2 id="s9"><span class="no">9.</span>自動化の対象外（人間の作業として残るもの）</h2>
+<ul>
+<li>クリエイティブ制作・LP改善・広告文の最終判断（AIは下書き支援まで）</li>
+<li>Google管理画面でしかできない設定（拡張コンバージョン有効化・入札単価目標値調整ツール・自動適用おすすめのOFF）→ アプリは<strong>チェックリストとして未対応を検知・案内</strong></li>
+<li>不承認の再審査請求・サポート問い合わせ</li>
+<li>Customer Match リストの準備（アップロード自体は将来対応可）</li>
+</ul>
+
+<h2 id="s10"><span class="no">10.</span>決めどころ（このレビューで決めてほしいこと）</h2>
+<div class="decide"><strong>①目標値の持ち方</strong> — 目標CPA/ROASは接続（アカウント）単位で1つ？ それともキャンペーン単位でも設定したい？（月次の目標対比の粒度が変わる。推奨: まず接続単位）</div>
+<div class="decide"><strong>②自動化レベルの初期値</strong> — 語句の昇格（キーワード登録）を将来 L3（全自動）まで上げたい？（推奨: L2のまま。登録は配信を広げる操作のため）</div>
+<div class="decide"><strong>③critical通知</strong> — CVゼロ・予算異常などの緊急アラートを LINE に飛ばす？（AI Companyのラヴ経由 or Ad Agent独自チャネル。Phase 1に含めるか）</div>
+<div class="decide"><strong>④学習期間ガードの既定</strong> — warn（警告のみ・現状）と block(実行不可)、どちらを既定にする？（推奨: warn。blockは誤検知時に不便）</div>
+<div class="decide"><strong>⑤日次チェックの時刻</strong> — 9:00のみ？ 21:00にも実行して夕方の異常を拾う？（推奨: 9:00のみで開始）</div>
+
+<p class="meta" style="margin-top:3rem">本設計は手順書『Google広告 運用ルール・手順書』（2026年7月）を正本とし、閾値は同書の値を初期値として実装する。レビュー承認後、docs/ に確定版を保存して Phase 1 に着手する。</p>
+</div>

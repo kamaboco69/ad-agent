@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getOrgContext, unauthorizedResponse } from "@/lib/auth-helpers";
 import { getProvider, ProviderError } from "@/lib/providers";
 import { toProviderConnection } from "@/lib/sync";
+import { logChange } from "@/lib/rules";
 
 // キャンペーンの操作: ステータス（配信/停止）・日予算の変更。
 // mode=api の接続は媒体APIへ反映してからDBを更新。demo はDBのみ。
@@ -43,5 +44,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
     select: { id: true, status: true, dailyBudgetYen: true },
   });
+
+  // 変更ログへ自動起票（14日後に効果を自動検証）
+  if (wantStatus)
+    await logChange({
+      organizationId: ctx.organizationId,
+      connectionId: campaign.connectionId,
+      campaignId: id,
+      kind: "status",
+      detail: `「${campaign.name}」を${wantStatus === "active" ? "配信再開" : "停止"}`,
+    });
+  if (wantBudget)
+    await logChange({
+      organizationId: ctx.organizationId,
+      connectionId: campaign.connectionId,
+      campaignId: id,
+      kind: "dailyBudget",
+      detail: `「${campaign.name}」日予算 ${campaign.dailyBudgetYen ? `¥${campaign.dailyBudgetYen.toLocaleString()}` : "未設定"} → ¥${wantBudget.toLocaleString()}`,
+    });
+
   return Response.json({ campaign: updated });
 }

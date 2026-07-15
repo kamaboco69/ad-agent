@@ -105,6 +105,9 @@ model AdConnection {
   currency          String    @default("JPY")
   monthlyBudgetYen  Int? // 月予算（消化ペースのアラート判定に使用）
   autoExclude       Boolean   @default(false) // 週次でAIの除外推奨（CV0のみ）を自動で媒体に登録する
+  targetCpaYen      Int? // 目標CPA（運用ルールエンジンの判定基準）
+  targetRoas        Int? // 目標ROAS（%）
+  learningGuardMode String    @default("warn") // warn / block（学習期間中の大変更の扱い）
   accessToken       String? // 暗号化
   refreshToken      String? // 暗号化
   tokenExpiresAt    DateTime?
@@ -187,6 +190,40 @@ model SearchTerm {
 
   @@unique([connectionId, campaignExternalId, term])
   @@index([connectionId, status])
+}
+
+// 変更ログ台帳（運用ルール§0）。アプリ経由の全変更を自動起票し、14日後に効果を自動検証する。
+model ChangeLog {
+  id             String    @id @default(cuid())
+  organizationId String
+  connectionId   String
+  campaignId     String?
+  kind           String // status / dailyBudget / exclude / target / monthlyBudget
+  detail         String // 例: 「日予算 ¥1,650 → ¥2,000」「除外KW『自転車 無料 回収』」
+  actor          String    @default("user") // user / auto
+  verifyAt       DateTime? // 確認予定日（+14日）
+  verifiedAt     DateTime?
+  verdict        String? // 自動検証の結果テキスト
+  createdAt      DateTime  @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([verifyAt, verifiedAt])
+}
+
+// 接続×日の集計スナップショット（日次異常検知・変更効果検証用）
+model DailySnapshot {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  connectionId       String
+  date               DateTime
+  costYen            Int      @default(0)
+  impressions        Int      @default(0)
+  clicks             Int      @default(0)
+  conversions        Float    @default(0)
+  conversionValueYen Int      @default(0)
+
+  @@unique([connectionId, date])
+  @@index([organizationId, date])
 }
 
 // AI インサイト（Claude が実績を分析したレポート/改善提案/予算アラート）。

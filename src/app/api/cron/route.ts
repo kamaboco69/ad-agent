@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { syncConnection } from "@/lib/sync";
 import { checkBudgetAlerts, runWeeklyInsights } from "@/lib/insights";
 import { runAutoExclude } from "@/lib/search-terms";
+import { snapshotDaily, runDailyChecks, verifyDueChanges } from "@/lib/rules";
 
 // 定期実行（Cloud Scheduler から Bearer CRON_SECRET で叩く）。
 // task=sync     … 全組織の全接続の日次同期（直近14日を上書き取得）
@@ -54,6 +55,16 @@ export async function GET(req: NextRequest) {
   if (task === "optimize" || task === "all") {
     const force = new URL(req.url).searchParams.get("force") === "1";
     result.optimize = await runAutoExclude(force); // 毎週月曜JST・autoExclude有効な接続のみ
+  }
+
+  if (task === "daily" || task === "all") {
+    // 日次ルール（§0/§1/§9）。異常検知は朝9時の実行のみ（21時実行では snapshot だけ更新）
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    const isMorning = new Date(Date.now() + 9 * 3600_000).getUTCHours() < 12;
+    const snapshot = await snapshotDaily();
+    const checks = force || isMorning ? await runDailyChecks() : { alerts: 0 };
+    const verify = force || isMorning ? await verifyDueChanges() : { verified: 0 };
+    result.daily = { snapshot, ...checks, ...verify };
   }
 
   return Response.json({ ok: true, task, ...result });

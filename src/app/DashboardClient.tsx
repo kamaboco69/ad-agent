@@ -50,6 +50,8 @@ export interface ConnectionView {
   accountName: string;
   monthlyBudgetYen: number | null;
   autoExclude: boolean;
+  targetCpaYen: number | null;
+  targetRoas: number | null;
   lastSyncedAt: string | null;
   lastError: string | null;
 }
@@ -863,6 +865,24 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     );
   };
 
+  // 目標CPA/ROAS（運用ルールエンジンの判定基準。日次チェック・月次レビューで使用）
+  const setTargets = (conn: ConnectionView, label: string) => {
+    const cpaIn = prompt(`${label} の目標CPA（円・空欄で解除）`, conn.targetCpaYen ? String(conn.targetCpaYen) : "");
+    if (cpaIn === null) return;
+    const roasIn = prompt(`${label} の目標ROAS（%・空欄で解除）`, conn.targetRoas ? String(conn.targetRoas) : "");
+    if (roasIn === null) return;
+    const cpa = cpaIn.trim() === "" ? null : Number(cpaIn.replace(/[,¥]/g, ""));
+    const roas = roasIn.trim() === "" ? null : Number(roasIn.replace(/[%,]/g, ""));
+    if ((cpa !== null && !Number.isFinite(cpa)) || (roas !== null && !Number.isFinite(roas))) return;
+    call(`target-${conn.id}`, () =>
+      fetch(`/api/connections/${conn.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetCpaYen: cpa, targetRoas: roas }),
+      })
+    );
+  };
+
   const toggleCampaign = (c: CampaignRow) =>
     call(`camp-${c.id}`, () =>
       fetch(`/api/campaigns/${c.id}`, {
@@ -1061,6 +1081,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           <button onClick={() => setMonthlyBudget(c, p.label)} className="text-gray-400 hover:text-white">
                             月予算{c.monthlyBudgetYen ? ` ${yen(c.monthlyBudgetYen)}` : "未設定"}
                           </button>
+                          {c.mode === "api" && (
+                            <button
+                              onClick={() => setTargets(c, p.label)}
+                              className="text-gray-400 hover:text-white"
+                              title="目標CPA/ROAS（日次チェック・月次レビューの判定基準）"
+                            >
+                              目標{c.targetCpaYen ? ` ¥${c.targetCpaYen.toLocaleString()}` : c.targetRoas ? ` ${c.targetRoas}%` : "未設定"}
+                            </button>
+                          )}
                           {p.id === "google" && c.mode === "api" && (
                             <>
                               <button

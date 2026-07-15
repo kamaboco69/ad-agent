@@ -217,6 +217,22 @@ const SYSTEM_PROMPT = `あなたは日本の広告運用コンサルタントで
 - 前期比が渡されている場合は、悪化している媒体・指標（CPA上昇、CV減少など）を最優先で改善アクションに反映する。
 - 冗長にしない。全体で600字〜1000字程度。`;
 
+// 直近7日の変更ログを分析データに併記する（手順書§10: 実施アクションの併記）
+async function recentActionsText(organizationId: string): Promise<string> {
+  const actions = await prisma.changeLog.findMany({
+    where: { organizationId, createdAt: { gte: new Date(Date.now() - 7 * 86400_000) } },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+  if (actions.length === 0) return "";
+  return (
+    "\n\n【直近7日の実施アクション（変更ログ）】\n" +
+    actions
+      .map((a) => `- ${a.createdAt.toISOString().slice(5, 10)} ${a.detail}（${a.actor === "auto" ? "自動" : "手動"}）`)
+      .join("\n")
+  );
+}
+
 export interface GenerateInsightOptions {
   days?: number;
   source?: "manual" | "cron";
@@ -236,7 +252,7 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: summaryToText(summary) }],
+    messages: [{ role: "user", content: summaryToText(summary) + (await recentActionsText(organizationId)) }],
   });
   const message = await stream.finalMessage();
 

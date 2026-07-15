@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getOrgContext, unauthorizedResponse } from "@/lib/auth-helpers";
 import { getProvider } from "@/lib/providers";
 import { toProviderConnection } from "@/lib/sync";
+import { logChange } from "@/lib/rules";
 
 // POST: 検索語句をキャンペーンの除外キーワードとして媒体に登録し、状態を excluded にする
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -40,6 +41,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await prisma.searchTerm.updateMany({
       where: { connectionId: id, campaignExternalId, term },
       data: { status: "excluded" },
+    });
+    await logChange({
+      organizationId: ctx.organizationId,
+      connectionId: id,
+      kind: "exclude",
+      detail: `除外KW「${term}」`,
     });
     return Response.json({ ok: true });
   } catch (e) {

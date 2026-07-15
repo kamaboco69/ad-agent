@@ -26,6 +26,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       : undefined;
   if (!wantStatus && !wantBudget) return Response.json({ error: "変更内容がありません" }, { status: 400 });
 
+  // 学習期間ハードガード（手順書§4）: block モードでは、同一キャンペーンに14日以内の変更が
+  // ある場合、追加の大変更（ステータス/予算）を拒否する（1変更1検証）。
+  if (campaign.connection.mode === "api" && campaign.connection.learningGuardMode === "block") {
+    const recent = await prisma.changeLog.findFirst({
+      where: {
+        campaignId: id,
+        kind: { in: ["status", "dailyBudget"] },
+        createdAt: { gte: new Date(Date.now() - 14 * 86400_000) },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (recent) {
+      return Response.json(
+        {
+          error: `学習期間ガード: このキャンペーンは ${recent.createdAt.toISOString().slice(0, 10)} に「${recent.detail}」を実施済みです。学習リセットを防ぐため14日間は追加変更をブロックしています（運用チェックでガードを「警告のみ」に変更すれば実行できます）。`,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   try {
     const provider = getProvider(toProviderConnection(campaign.connection).platform, campaign.connection.mode);
     const pconn = toProviderConnection(campaign.connection);

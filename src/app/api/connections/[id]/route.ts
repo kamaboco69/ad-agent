@@ -23,6 +23,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     autoExclude?: boolean;
     targetCpaYen?: number | null;
     targetRoas?: number | null;
+    learningGuardMode?: string;
   };
 
   // 接続アカウントの変更（実API接続のみ）: 対象を切り替え、旧アカウントのデータを消して再同期
@@ -60,6 +61,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.targetCpaYen === "number" && body.targetCpaYen > 0) data.targetCpaYen = Math.round(body.targetCpaYen);
   if (body.targetRoas === null) data.targetRoas = null;
   if (typeof body.targetRoas === "number" && body.targetRoas > 0) data.targetRoas = Math.round(body.targetRoas);
+  if (body.learningGuardMode === "warn" || body.learningGuardMode === "block") {
+    data.learningGuardMode = body.learningGuardMode;
+  }
   if (Object.keys(data).length === 0) return Response.json({ error: "変更内容がありません" }, { status: 400 });
 
   const updated = await prisma.adConnection.update({ where: { id }, data });

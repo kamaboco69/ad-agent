@@ -52,6 +52,7 @@ export interface ConnectionView {
   autoExclude: boolean;
   targetCpaYen: number | null;
   targetRoas: number | null;
+  learningGuardMode: string;
   lastSyncedAt: string | null;
   lastError: string | null;
 }
@@ -388,7 +389,14 @@ interface SearchTermView {
 
 interface HealthView {
   trackingStatus: string;
-  actions: { name: string; category: string; primary: boolean; countingType: string; hasValue: boolean }[];
+  actions: {
+    name: string;
+    category: string;
+    primary: boolean;
+    countingType: string;
+    hasValue: boolean;
+    attributionModel: string;
+  }[];
 }
 
 interface ChangeView {
@@ -480,6 +488,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
     );
 
   const [autoExclude, setAutoExclude] = useState(conn.autoExclude);
+  const [guardBlock, setGuardBlock] = useState(conn.learningGuardMode === "block");
 
   const excludeAll = () => {
     const eligible = terms.filter((t) => t.status === "new" && t.aiVerdict === "exclude" && t.conversions === 0);
@@ -562,7 +571,25 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
     for (const a of health.actions.filter((a) => a.primary && !a.hasValue)) {
       healthIssues.push(`「${a.name}」に固定値なし（動的値を送っていない場合は value 入札が使えません）`);
     }
+    for (const a of health.actions.filter(
+      (a) => a.primary && a.attributionModel && !a.attributionModel.includes("DATA_DRIVEN")
+    )) {
+      healthIssues.push(`「${a.name}」のアトリビューションがDDA（データドリブン）ではありません（手順書§5-A）`);
+    }
+    for (const a of health.actions.filter((a) => a.primary && a.category.includes("PURCHASE") && a.countingType === "ONE_PER_CLICK")) {
+      healthIssues.push(`購入CV「${a.name}」が「初回のみ」カウントです（ECの購入は「全件」推奨）`);
+    }
   }
+
+  const toggleGuard = async (block: boolean) => {
+    const res = await fetch(`/api/connections/${conn.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ learningGuardMode: block ? "block" : "warn" }),
+    });
+    if (res.ok) setGuardBlock(block);
+    else setError("学習期間ガード設定の変更に失敗しました");
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
@@ -689,6 +716,15 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
               className="accent-sky-500"
             />
             毎週月曜に自動で「同期 → AI分類 → 除外推奨（CV0のみ）の除外登録」まで実行する（結果はAIインサイトに記録）
+          </label>
+          <label className="flex items-center gap-2 text-[11px] text-gray-400 mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={guardBlock}
+              onChange={(e) => toggleGuard(e.target.checked)}
+              className="accent-amber-500"
+            />
+            学習期間ガードを「ブロック」にする（14日以内に変更したキャンペーンへの追加変更を禁止・手順書§4）
           </label>
 
           {terms.length === 0 ? (

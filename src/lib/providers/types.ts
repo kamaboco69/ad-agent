@@ -77,6 +77,7 @@ export interface ConversionHealth {
     primary: boolean;
     countingType: string;
     hasValue: boolean;
+    attributionModel: string;
   }>;
 }
 

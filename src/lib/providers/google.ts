@@ -84,6 +84,7 @@ interface SearchRow {
     primaryForGoal?: boolean;
     countingType?: string;
     valueSettings?: { defaultValue?: number };
+    attributionModelSettings?: { attributionModel?: string };
   };
   changeEvent?: {
     changeDateTime?: string;
@@ -452,7 +453,8 @@ export function createGoogleProvider(): AdProvider {
         customerId,
         `SELECT conversion_action.name, conversion_action.category, conversion_action.type,
                 conversion_action.status, conversion_action.primary_for_goal,
-                conversion_action.counting_type, conversion_action.value_settings.default_value
+                conversion_action.counting_type, conversion_action.value_settings.default_value,
+                conversion_action.attribution_model_settings.attribution_model
          FROM conversion_action WHERE conversion_action.status = 'ENABLED'`,
         login
       );
@@ -465,6 +467,7 @@ export function createGoogleProvider(): AdProvider {
           primary: r.conversionAction?.primaryForGoal === true,
           countingType: r.conversionAction?.countingType ?? "",
           hasValue: (r.conversionAction?.valueSettings?.defaultValue ?? 0) > 0,
+          attributionModel: r.conversionAction?.attributionModelSettings?.attributionModel ?? "",
         })),
       };
     },

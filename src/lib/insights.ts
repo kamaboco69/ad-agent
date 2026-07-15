@@ -276,7 +276,15 @@ async function recentActionsText(organizationId: string): Promise<string> {
 export interface GenerateInsightOptions {
   days?: number;
   source?: "manual" | "cron";
+  monthly?: boolean; // 月次レビュー（目標対比・要因分析・翌月アクション）
 }
+
+const MONTHLY_PROMPT_SUFFIX = `
+
+今回は【月次レビュー】として出力する（手順書§3/§10）:
+- 構成: ## 目標対比（達成/未達と差分。目標値が渡されていれば必ず数値で） ## 要因分析（なぜその結果か） ## 翌月アクション（次に何をするか・優先順）
+- 指名/非指名を分けて評価する。数字だけの報告にしない。
+- 最後に「除外キーワードリストとプレースメント除外の棚卸しを実施してください」と1行添える。`;
 
 // 実績を分析して改善提案 Insight を生成・保存する
 export async function generateInsight(organizationId: string, opts: GenerateInsightOptions = {}) {
@@ -291,7 +299,7 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
     model: "claude-opus-4-8",
     max_tokens: 16000,
     thinking: { type: "adaptive" },
-    system: SYSTEM_PROMPT,
+    system: opts.monthly ? SYSTEM_PROMPT + MONTHLY_PROMPT_SUFFIX : SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
@@ -309,8 +317,11 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
     .trim();
   if (!body) throw new Error("分析結果の生成に失敗しました");
 
-  const title =
-    opts.source === "cron" ? `週次運用改善レポート（直近${days}日）` : `運用改善レポート（直近${days}日）`;
+  const title = opts.monthly
+    ? `月次レビュー（直近${days}日）`
+    : opts.source === "cron"
+      ? `週次運用改善レポート（直近${days}日）`
+      : `運用改善レポート（直近${days}日）`;
   return prisma.insight.create({
     data: {
       organizationId,
@@ -364,6 +375,44 @@ export async function runWeeklyInsights(force = false): Promise<{ generated: num
       generated++;
     } catch {
       // 実績データなし等はスキップ（接続直後の組織など）
+      skipped++;
+    }
+  }
+  return { generated, skipped };
+}
+
+// 月次レビューの自動生成（毎月1日JSTのみ・cronから）。20日以内の重複は生成しない。
+export async function runMonthlyReview(force = false): Promise<{ generated: number; skipped: number }> {
+  if (!aiConfigured()) return { generated: 0, skipped: 0 };
+  const nowJst = new Date(Date.now() + 9 * 3600_000);
+  if (!force && nowJst.getUTCDate() !== 1) return { generated: 0, skipped: 0 };
+
+  const orgs = await prisma.adConnection.findMany({
+    where: { status: { not: "revoked" } },
+    select: { organizationId: true },
+    distinct: ["organizationId"],
+  });
+  let generated = 0;
+  let skipped = 0;
+  for (const { organizationId } of orgs) {
+    if (!force) {
+      const recent = await prisma.insight.findFirst({
+        where: {
+          organizationId,
+          title: { startsWith: "月次レビュー" },
+          createdAt: { gte: new Date(Date.now() - 20 * 86400_000) },
+        },
+        select: { id: true },
+      });
+      if (recent) {
+        skipped++;
+        continue;
+      }
+    }
+    try {
+      await generateInsight(organizationId, { days: 30, source: "cron", monthly: true });
+      generated++;
+    } catch {
       skipped++;
     }
   }

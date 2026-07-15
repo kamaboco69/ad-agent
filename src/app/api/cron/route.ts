@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncConnection } from "@/lib/sync";
-import { checkBudgetAlerts, runWeeklyInsights } from "@/lib/insights";
+import { checkBudgetAlerts, runWeeklyInsights, runMonthlyReview } from "@/lib/insights";
 import { runAutoExclude } from "@/lib/search-terms";
 import { snapshotDaily, runDailyChecks, verifyDueChanges } from "@/lib/rules";
 
@@ -55,6 +55,11 @@ export async function GET(req: NextRequest) {
   if (task === "optimize" || task === "all") {
     const force = new URL(req.url).searchParams.get("force") === "1";
     result.optimize = await runAutoExclude(force); // 毎週月曜JST・autoExclude有効な接続のみ
+  }
+
+  if (task === "monthly" || task === "all") {
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    result.monthly = await runMonthlyReview(force); // 毎月1日JSTのみ生成
   }
 
   if (task === "daily" || task === "all") {

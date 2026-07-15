@@ -109,6 +109,8 @@ export interface AdProvider {
     term: string,
     matchType: "EXACT" | "PHRASE"
   ): Promise<void>;
+  // 語句の昇格: 完全一致キーワードとして正式登録（SMARTはキーワードテーマ）
+  addKeyword?(conn: ProviderConnection, campaignExternalId: string, term: string): Promise<void>;
   conversionHealth?(conn: ProviderConnection): Promise<ConversionHealth>;
   recentChanges?(conn: ProviderConnection, days: number): Promise<ChangeEventRow[]>;
 }

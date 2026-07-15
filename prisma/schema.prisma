@@ -126,7 +126,9 @@ model AdConnection {
 }
 
 // キャンペーン（媒体横断で最小共通単位に正規化。広告グループ/セットは v2）。
+// brandTag: 指名/非指名の分離レポート用（同期時に名前から自動判定。brand / nonbrand）
 model Campaign {
+  brandTag String @default("nonbrand")
   id             String    @id @default(cuid())
   organizationId String
   connectionId   String

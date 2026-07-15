@@ -374,6 +374,68 @@ export function createGoogleProvider(): AdProvider {
       }
     },
 
+    // 語句の昇格（手順書§2-A）: 検索CPは最初の有効な広告グループへ完全一致キーワード登録、
+    // SMART はキーワードテーマとして追加する。
+    async addKeyword(conn, campaignExternalId, term): Promise<void> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const login = loginCid(conn);
+      const info = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT campaign.advertising_channel_type FROM campaign WHERE campaign.id = ${Number(campaignExternalId)}`,
+        login
+      );
+      if (info[0]?.campaign?.advertisingChannelType === "SMART") {
+        const res = await fetch(`${ADS_API}/customers/${customerId}/campaignCriteria:mutate`, {
+          method: "POST",
+          headers: adsHeaders(token, login),
+          body: JSON.stringify({
+            operations: [
+              {
+                create: {
+                  campaign: `customers/${customerId}/campaigns/${campaignExternalId}`,
+                  keywordTheme: { freeFormKeywordTheme: term },
+                },
+              },
+            ],
+          }),
+        });
+        if (!res.ok) {
+          const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+          throw new ProviderError(`キーワードテーマ追加に失敗: ${adsErrorMessage(json, res.status)}`);
+        }
+        return;
+      }
+      const groups = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT ad_group.id FROM ad_group WHERE campaign.id = ${Number(campaignExternalId)} AND ad_group.status = 'ENABLED' LIMIT 1`,
+        login
+      );
+      const adGroupId = (groups[0] as { adGroup?: { id?: string } })?.adGroup?.id;
+      if (!adGroupId) throw new ProviderError("有効な広告グループが見つかりません");
+      const res = await fetch(`${ADS_API}/customers/${customerId}/adGroupCriteria:mutate`, {
+        method: "POST",
+        headers: adsHeaders(token, login),
+        body: JSON.stringify({
+          operations: [
+            {
+              create: {
+                adGroup: `customers/${customerId}/adGroups/${adGroupId}`,
+                status: "ENABLED",
+                keyword: { text: term, matchType: "EXACT" },
+              },
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+        throw new ProviderError(`キーワード登録に失敗: ${adsErrorMessage(json, res.status)}`);
+      }
+    },
+
     // コンバージョン計測のヘルスチェック（トラッキング状態＋有効なCVアクション一覧）
     async conversionHealth(conn): Promise<ConversionHealth> {
       const token = await freshToken(conn);

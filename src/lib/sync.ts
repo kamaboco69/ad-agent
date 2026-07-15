@@ -40,6 +40,11 @@ export function toProviderConnection(conn: DbConnection): ProviderConnection {
   };
 }
 
+// キャンペーン名から指名/非指名を判定（手順書§6-A。誤判定は将来UIで修正可能にする）
+function detectBrandTag(name: string): string {
+  return /指名|ブランド|brand|社名|会社名/i.test(name) ? "brand" : "nonbrand";
+}
+
 export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAYS): Promise<SyncOutcome> {
   const base: SyncOutcome = { connectionId: conn.id, platform: conn.platform, ok: false, campaigns: 0, metrics: 0 };
   try {
@@ -58,6 +63,7 @@ export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAY
           dailyBudgetYen: c.dailyBudgetYen,
           startDate: c.startDate,
           endDate: c.endDate,
+          brandTag: detectBrandTag(c.name),
         },
         create: {
           organizationId: conn.organizationId,
@@ -69,6 +75,7 @@ export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAY
           dailyBudgetYen: c.dailyBudgetYen,
           startDate: c.startDate,
           endDate: c.endDate,
+          brandTag: detectBrandTag(c.name),
         },
         select: { id: true },
       });

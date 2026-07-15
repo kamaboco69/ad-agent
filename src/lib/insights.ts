@@ -217,6 +217,46 @@ const SYSTEM_PROMPT = `あなたは日本の広告運用コンサルタントで
 - 前期比が渡されている場合は、悪化している媒体・指標（CPA上昇、CV減少など）を最優先で改善アクションに反映する。
 - 冗長にしない。全体で600字〜1000字程度。`;
 
+// 指名/非指名の分離集計と目標値を分析データに併記する（手順書§6-A/§10: 指名込みで評価しない）
+async function contextText(organizationId: string, days: number): Promise<string> {
+  const start = new Date(Date.now() - days * 86400_000);
+  const lines: string[] = [];
+
+  const metrics = await prisma.dailyMetric.findMany({
+    where: { organizationId, date: { gte: start } },
+    select: { costYen: true, conversions: true, conversionValueYen: true, campaign: { select: { brandTag: true } } },
+  });
+  const agg = { brand: { cost: 0, cv: 0 }, nonbrand: { cost: 0, cv: 0 } };
+  for (const m of metrics) {
+    const k = m.campaign.brandTag === "brand" ? "brand" : "nonbrand";
+    agg[k].cost += m.costYen;
+    agg[k].cv += m.conversions;
+  }
+  if (agg.brand.cost > 0) {
+    const f = (a: { cost: number; cv: number }) =>
+      `消化¥${a.cost.toLocaleString()} / CV${a.cv.toFixed(1)} / CPA${a.cv ? "¥" + Math.round(a.cost / a.cv).toLocaleString() : "—"}`;
+    lines.push(`【指名/非指名の分離】指名: ${f(agg.brand)} ／ 非指名: ${f(agg.nonbrand)}（指名込みで全体CPAを評価しないこと）`);
+  }
+
+  const targets = await prisma.adConnection.findMany({
+    where: { organizationId, mode: "api", OR: [{ targetCpaYen: { not: null } }, { targetRoas: { not: null } }] },
+    select: { accountName: true, targetCpaYen: true, targetRoas: true },
+  });
+  if (targets.length > 0) {
+    lines.push(
+      "【目標値】" +
+        targets
+          .map(
+            (t) =>
+              `${t.accountName}: ${t.targetCpaYen ? `目標CPA¥${t.targetCpaYen.toLocaleString()}` : ""}${t.targetRoas ? ` 目標ROAS${t.targetRoas}%` : ""}`
+          )
+          .join(" ／ ") +
+        "（予算増額の提案は1回+20%以内・学習期間中の変更は避けること）"
+    );
+  }
+  return lines.length ? "\n\n" + lines.join("\n") : "";
+}
+
 // 直近7日の変更ログを分析データに併記する（手順書§10: 実施アクションの併記）
 async function recentActionsText(organizationId: string): Promise<string> {
   const actions = await prisma.changeLog.findMany({
@@ -252,7 +292,13 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
     max_tokens: 16000,
     thinking: { type: "adaptive" },
     system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: summaryToText(summary) + (await recentActionsText(organizationId)) }],
+    messages: [
+      {
+        role: "user",
+        content:
+          summaryToText(summary) + (await contextText(organizationId, days)) + (await recentActionsText(organizationId)),
+      },
+    ],
   });
   const message = await stream.finalMessage();
 

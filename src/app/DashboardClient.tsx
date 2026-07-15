@@ -523,9 +523,25 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
     );
   };
 
+  const promote = (t: SearchTermView) => {
+    if (!confirm(`「${t.term}」を\nキャンペーン「${t.campaignName}」の完全一致キーワードとして正式登録しますか？（配信が広がる操作です）`)) return;
+    act(
+      `pr-${t.id}`,
+      () =>
+        fetch(`/api/connections/${conn.id}/search-terms/promote`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignExternalId: t.campaignExternalId, term: t.term }),
+        }),
+      loadTerms
+    );
+  };
+
   const verdictBadge = (t: SearchTermView) => {
     if (t.status === "excluded")
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-gray-500">除外済み</span>;
+    if (t.status === "promoted")
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">昇格済み</span>;
     if (t.aiVerdict === "exclude")
       return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-900">除外推奨</span>;
     if (t.aiVerdict === "promote")
@@ -706,7 +722,17 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
                       <td className="px-2.5 py-1.5 text-right tabular-nums">{t.conversions.toFixed(1)}</td>
                       <td className="px-2.5 py-1.5">{verdictBadge(t)}</td>
                       <td className="px-2.5 py-1.5 text-right">
-                        {t.status !== "excluded" && (
+                        {t.status === "new" && t.aiVerdict === "promote" && t.conversions >= 2 && (
+                          <button
+                            onClick={() => promote(t)}
+                            disabled={busy !== null}
+                            className="text-[10px] rounded px-1.5 py-0.5 border border-emerald-900 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 mr-1"
+                            title="完全一致キーワードとして正式登録（手順書§2-A: CV2件以上）"
+                          >
+                            昇格
+                          </button>
+                        )}
+                        {t.status !== "excluded" && t.status !== "promoted" && (
                           <button
                             onClick={() => exclude(t)}
                             disabled={busy !== null}

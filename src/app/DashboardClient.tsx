@@ -261,6 +261,112 @@ function TrendChart({
   );
 }
 
+// ── アカウント追加接続（MCC配下からチェックで複数選択） ──
+
+function AccountPickerModal({
+  conn,
+  onClose,
+  onDone,
+}: {
+  conn: ConnectionView;
+  onClose: () => void;
+  onDone: (msg: string) => void;
+}) {
+  type Acct = { id: string; loginCustomerId: string | null; name: string };
+  const [accounts, setAccounts] = useState<Acct[] | null>(null);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch(`/api/connections/${conn.id}/accounts`);
+      const json = (await res.json().catch(() => ({}))) as { accounts?: Acct[]; error?: string };
+      if (res.ok) setAccounts(json.accounts ?? []);
+      else setError(json.error ?? "アカウント一覧の取得に失敗しました");
+    })();
+  }, [conn.id]);
+
+  const submit = async () => {
+    const sel = (accounts ?? []).filter((a) => checked[a.id]);
+    if (sel.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/connections/${conn.id}/add-accounts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accounts: sel }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { created?: number; skipped?: number; error?: string };
+      if (!res.ok) {
+        setError(json.error ?? "追加に失敗しました");
+        return;
+      }
+      onDone(
+        `${json.created ?? 0}件のアカウントを接続しました${json.skipped ? `（${json.skipped}件は接続済みのためスキップ）` : ""}`
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
+      <div
+        className="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-xl p-5 my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <Plug size={15} className="text-sky-400" />
+          <h3 className="text-white font-semibold text-sm">アカウントを追加接続</h3>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+            <XIcon size={16} />
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+        {!accounts ? (
+          <p className="text-xs text-gray-600 flex items-center gap-1.5">
+            <Loader2 size={12} className="animate-spin" />
+            アカウント一覧を取得中…（10秒ほどかかります）
+          </p>
+        ) : (
+          <>
+            <div className="max-h-72 overflow-y-auto space-y-1 mb-3">
+              {accounts.map((a) => (
+                <label
+                  key={a.id}
+                  className="flex items-center gap-2.5 text-sm text-gray-200 rounded-lg px-2 py-1.5 hover:bg-neutral-900 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!checked[a.id]}
+                    onChange={(e) => setChecked((m) => ({ ...m, [a.id]: e.target.checked }))}
+                    className="accent-sky-500"
+                  />
+                  <span className="truncate">{a.name}</span>
+                  <span className="ml-auto text-[10px] text-gray-600 shrink-0">{a.id}</span>
+                </label>
+              ))}
+            </div>
+            <button
+              onClick={submit}
+              disabled={busy || Object.values(checked).every((v) => !v)}
+              className="w-full flex items-center justify-center gap-1.5 text-sm bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded-lg py-2"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : null}
+              {busy ? "接続と初回同期を実行中…（アカウント数×10秒ほど）" : "チェックしたアカウントを接続"}
+            </button>
+            <p className="text-[10px] text-gray-600 mt-2">
+              接続済みのアカウントは自動でスキップされます。不要になった接続はカードのゴミ箱で個別に削除できます。
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── 運用チェック（検索語句×AI除外・計測ヘルス・学習期間ガード） ──
 
 interface SearchTermView {
@@ -631,6 +737,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [openInsight, setOpenInsight] = useState<string | null>(null);
   const [showConnect, setShowConnect] = useState(false);
   const [opsConn, setOpsConn] = useState<ConnectionView | null>(null);
+  const [pickerConn, setPickerConn] = useState<ConnectionView | null>(null);
   const [activeNav, setActiveNav] = useState("sec-kpi");
 
   const navigate = (id: string) => {
@@ -687,51 +794,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     call(`del-${id}`, () => fetch(`/api/connections/${id}`, { method: "DELETE" }));
   };
 
-  // 接続する広告アカウントを選択（Google Ads の複数アカウント/MCC配下から選ぶ）
-  const selectAccount = async (conn: ConnectionView, label: string) => {
-    type Acct = { id: string; loginCustomerId: string | null; name: string };
-    setBusy(`acct-${conn.id}`);
-    let accounts: Acct[] = [];
-    try {
-      const res = await fetch(`/api/connections/${conn.id}/accounts`);
-      const json = (await res.json().catch(() => ({}))) as { accounts?: Acct[]; error?: string };
-      if (!res.ok) {
-        setBanner({ kind: "error", text: json.error ?? "アカウント一覧の取得に失敗しました" });
-        return;
-      }
-      accounts = json.accounts ?? [];
-    } finally {
-      setBusy(null);
-    }
-
-    if (accounts.length === 0) {
-      setBanner({ kind: "error", text: "選択可能なアカウントが見つかりませんでした" });
-      return;
-    }
-
-    const menu = accounts
-      .map((a, i) => `${i + 1}) ${a.name} (${a.id})${a.loginCustomerId ? ` [MCC:${a.loginCustomerId}]` : ""}`)
-      .join("\n");
-    const input = prompt(`${label} で接続するアカウントを番号で選択:\n${menu}`, "1");
-    if (input === null) return;
-    const idx = Number(input.trim()) - 1;
-    if (!Number.isInteger(idx) || idx < 0 || idx >= accounts.length) {
-      setBanner({ kind: "error", text: "無効な番号です" });
-      return;
-    }
-    const chosen = accounts[idx];
-    await call(`acct-${conn.id}`, () =>
-      fetch(`/api/connections/${conn.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          externalAccountId: chosen.id,
-          loginCustomerId: chosen.loginCustomerId,
-          accountName: chosen.name,
-        }),
-      })
-    );
-  };
+  // アカウント選択はチェックボックス式モーダル（AccountPickerModal）で複数を追加接続する
 
   const setMonthlyBudget = (conn: ConnectionView, label: string) => {
     const input = prompt(`${label} の月予算（円・空欄で解除）`, conn.monthlyBudgetYen ? String(conn.monthlyBudgetYen) : "");
@@ -864,6 +927,17 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       )}
 
       {opsConn && <OpsCheckModal conn={opsConn} onClose={() => setOpsConn(null)} />}
+      {pickerConn && (
+        <AccountPickerModal
+          conn={pickerConn}
+          onClose={() => setPickerConn(null)}
+          onDone={(msg) => {
+            setPickerConn(null);
+            setBanner({ kind: "ok", text: msg });
+            router.refresh();
+          }}
+        />
+      )}
 
       {/* 接続パネル（トグル or 未接続時は常時） */}
       {(showConnect || !hasConnections) && (
@@ -937,12 +1011,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           {p.id === "google" && c.mode === "api" && (
                             <>
                               <button
-                                onClick={() => selectAccount(c, p.label)}
-                                disabled={busy === `acct-${c.id}`}
-                                className="text-gray-400 hover:text-white disabled:opacity-50"
-                                title="接続する広告アカウントを選択"
+                                onClick={() => setPickerConn(c)}
+                                className="text-gray-400 hover:text-white"
+                                title="MCC配下のアカウントをチェックして追加接続"
                               >
-                                アカウント選択
+                                アカウント追加
                               </button>
                               <button
                                 onClick={() => setOpsConn(c)}

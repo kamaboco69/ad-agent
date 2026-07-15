@@ -49,6 +49,7 @@ export interface ConnectionView {
   status: string;
   accountName: string;
   monthlyBudgetYen: number | null;
+  autoExclude: boolean;
   lastSyncedAt: string | null;
   lastError: string | null;
 }
@@ -476,6 +477,36 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
       }
     );
 
+  const [autoExclude, setAutoExclude] = useState(conn.autoExclude);
+
+  const excludeAll = () => {
+    const eligible = terms.filter((t) => t.status === "new" && t.aiVerdict === "exclude" && t.conversions === 0);
+    if (eligible.length === 0) return;
+    if (!confirm(`AIが除外推奨と判定した ${eligible.length}件（CV0のみ）を、まとめて除外キーワード登録しますか？`)) return;
+    act(
+      "exclude-all",
+      () => fetch(`/api/connections/${conn.id}/search-terms/exclude-all`, { method: "POST" }),
+      async (json) => {
+        await loadTerms();
+        const failed = Number(json.failed ?? 0);
+        setNotice(`${Number(json.excluded ?? 0)}件を除外登録しました${failed ? `（${failed}件は失敗）` : ""}`);
+      }
+    );
+  };
+
+  const toggleAutoExclude = async (next: boolean) => {
+    setAutoExclude(next);
+    const res = await fetch(`/api/connections/${conn.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ autoExclude: next }),
+    });
+    if (!res.ok) {
+      setAutoExclude(!next);
+      setError("自動除外設定の変更に失敗しました");
+    }
+  };
+
   const exclude = (t: SearchTermView) => {
     if (!confirm(`「${t.term}」を\nキャンペーン「${t.campaignName}」の除外キーワード（完全一致）に登録しますか？`)) return;
     act(
@@ -617,8 +648,30 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
                 {busy === "classify" ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
                 AIで分類
               </button>
+              <button
+                onClick={excludeAll}
+                disabled={
+                  busy !== null ||
+                  terms.filter((t) => t.status === "new" && t.aiVerdict === "exclude" && t.conversions === 0).length === 0
+                }
+                className="flex items-center gap-1 text-[11px] bg-red-900 hover:bg-red-800 disabled:opacity-40 text-red-100 rounded px-2 py-1"
+                title="AIが除外推奨と判定した語句（CV0のみ）をまとめて除外登録"
+              >
+                {busy === "exclude-all" ? <Loader2 size={11} className="animate-spin" /> : null}
+                除外推奨を一括除外
+              </button>
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-[11px] text-gray-400 mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoExclude}
+              onChange={(e) => toggleAutoExclude(e.target.checked)}
+              className="accent-sky-500"
+            />
+            毎週月曜に自動で「同期 → AI分類 → 除外推奨（CV0のみ）の除外登録」まで実行する（結果はAIインサイトに記録）
+          </label>
 
           {terms.length === 0 ? (
             <p className="text-xs text-gray-600">

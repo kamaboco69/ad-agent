@@ -19,6 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     accountName?: string;
     externalAccountId?: string;
     loginCustomerId?: string | null;
+    autoExclude?: boolean;
   };
 
   // 接続アカウントの変更（実API接続のみ）: 対象を切り替え、旧アカウントのデータを消して再同期
@@ -51,6 +52,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.accountName === "string" && body.accountName.trim()) {
     data.accountName = body.accountName.trim();
   }
+  if (typeof body.autoExclude === "boolean") data.autoExclude = body.autoExclude;
   if (Object.keys(data).length === 0) return Response.json({ error: "変更内容がありません" }, { status: 400 });
 
   const updated = await prisma.adConnection.update({ where: { id }, data });

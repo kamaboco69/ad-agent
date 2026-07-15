@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { syncConnection } from "@/lib/sync";
 import { checkBudgetAlerts, runWeeklyInsights } from "@/lib/insights";
+import { runAutoExclude } from "@/lib/search-terms";
 
 // 定期実行（Cloud Scheduler から Bearer CRON_SECRET で叩く）。
 // task=sync     … 全組織の全接続の日次同期（直近14日を上書き取得）
@@ -48,6 +49,11 @@ export async function GET(req: NextRequest) {
   if (task === "insights" || task === "all") {
     const force = new URL(req.url).searchParams.get("force") === "1";
     result.insights = await runWeeklyInsights(force);
+  }
+
+  if (task === "optimize" || task === "all") {
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    result.optimize = await runAutoExclude(force); // 毎週月曜JST・autoExclude有効な接続のみ
   }
 
   return Response.json({ ok: true, task, ...result });

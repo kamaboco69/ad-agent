@@ -104,6 +104,7 @@ model AdConnection {
   loginCustomerId   String? // Google Ads: マネージャー(MCC)経由アクセス時の login-customer-id。直接アクセスは null
   currency          String    @default("JPY")
   monthlyBudgetYen  Int? // 月予算（消化ペースのアラート判定に使用）
+  autoExclude       Boolean   @default(false) // 週次でAIの除外推奨（CV0のみ）を自動で媒体に登録する
   accessToken       String? // 暗号化
   refreshToken      String? // 暗号化
   tokenExpiresAt    DateTime?

@@ -63,7 +63,7 @@ function adsHeaders(token: string, loginCustomerId?: string): Record<string, str
 }
 
 interface SearchRow {
-  campaign?: { id?: string; name?: string; status?: string; campaignBudget?: string };
+  campaign?: { id?: string; name?: string; status?: string; campaignBudget?: string; advertisingChannelType?: string };
   campaignBudget?: { amountMicros?: string };
   segments?: { date?: string };
   metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number };
@@ -340,24 +340,33 @@ export function createGoogleProvider(): AdProvider {
       return [...agg.values()].sort((a, b) => b.costYen - a.costYen);
     },
 
-    // キャンペーン単位の除外キーワードを追加
+    // キャンペーン単位の除外キーワードを追加。
+    // SMART（スマートアシスト）キャンペーンは keyword 条件が使えず、除外キーワードテーマ方式で登録する。
     async addNegativeKeyword(conn, campaignExternalId, term, matchType): Promise<void> {
       const token = await freshToken(conn);
       const customerId = cid(conn);
+      const info = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT campaign.advertising_channel_type FROM campaign WHERE campaign.id = ${Number(campaignExternalId)}`,
+        loginCid(conn)
+      );
+      const isSmart = info[0]?.campaign?.advertisingChannelType === "SMART";
+      const criterion = isSmart
+        ? {
+            campaign: `customers/${customerId}/campaigns/${campaignExternalId}`,
+            negative: true,
+            keywordTheme: { freeFormKeywordTheme: term },
+          }
+        : {
+            campaign: `customers/${customerId}/campaigns/${campaignExternalId}`,
+            negative: true,
+            keyword: { text: term, matchType },
+          };
       const res = await fetch(`${ADS_API}/customers/${customerId}/campaignCriteria:mutate`, {
         method: "POST",
         headers: adsHeaders(token, loginCid(conn)),
-        body: JSON.stringify({
-          operations: [
-            {
-              create: {
-                campaign: `customers/${customerId}/campaigns/${campaignExternalId}`,
-                negative: true,
-                keyword: { text: term, matchType },
-              },
-            },
-          ],
-        }),
+        body: JSON.stringify({ operations: [{ create: criterion }] }),
       });
       if (!res.ok) {
         const json = (await res.json().catch(() => ({}))) as AdsErrorBody;

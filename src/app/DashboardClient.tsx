@@ -295,6 +295,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
   const [healthError, setHealthError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const loadTerms = async () => {
     const res = await fetch(`/api/connections/${conn.id}/search-terms`);
@@ -321,27 +322,53 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conn.id]);
 
-  const act = async (key: string, fn: () => Promise<Response>, after?: () => Promise<void>) => {
+  const act = async (
+    key: string,
+    fn: () => Promise<Response>,
+    after?: (json: Record<string, unknown>) => Promise<void>
+  ) => {
     setBusy(key);
     setError(null);
+    setNotice(null);
     try {
       const res = await fn();
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & { error?: string };
       if (!res.ok) {
         setError(json.error ?? "エラーが発生しました");
         return;
       }
-      if (after) await after();
+      if (after) await after(json);
+    } catch {
+      setError("通信に失敗しました。時間をおいて再試行してください。");
     } finally {
       setBusy(null);
     }
   };
 
   const syncTerms = () =>
-    act("sync", () => fetch(`/api/connections/${conn.id}/search-terms`, { method: "POST" }), loadTerms);
+    act(
+      "sync",
+      () => fetch(`/api/connections/${conn.id}/search-terms`, { method: "POST" }),
+      async (json) => {
+        await loadTerms();
+        const n = Number(json.synced ?? 0);
+        setNotice(
+          n > 0
+            ? `検索語句を${n}件取得しました`
+            : "検索語句が0件でした（直近30日に検索面の配信が無い可能性があります）"
+        );
+      }
+    );
 
   const classify = () =>
-    act("classify", () => fetch(`/api/connections/${conn.id}/search-terms/classify`, { method: "POST" }), loadTerms);
+    act(
+      "classify",
+      () => fetch(`/api/connections/${conn.id}/search-terms/classify`, { method: "POST" }),
+      async (json) => {
+        await loadTerms();
+        setNotice(`AIが${Number(json.classified ?? 0)}件を分類しました`);
+      }
+    );
 
   const exclude = (t: SearchTermView) => {
     if (!confirm(`「${t.term}」を\nキャンペーン「${t.campaignName}」の除外キーワード（完全一致）に登録しますか？`)) return;
@@ -400,6 +427,11 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
           <div className="flex items-center gap-2 rounded-lg px-3 py-2 mb-3 text-xs bg-red-950/60 border border-red-900 text-red-300">
             <AlertTriangle size={13} className="shrink-0" />
             {error}
+          </div>
+        )}
+        {notice && (
+          <div className="rounded-lg px-3 py-2 mb-3 text-xs bg-emerald-950/60 border border-emerald-800 text-emerald-300">
+            {notice}
           </div>
         )}
 

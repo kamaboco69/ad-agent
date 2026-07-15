@@ -75,6 +75,7 @@ interface SearchRow {
   };
   customerClient?: { id?: string; descriptiveName?: string; manager?: boolean; level?: string };
   searchTermView?: { searchTerm?: string };
+  smartCampaignSearchTermView?: { searchTerm?: string };
   conversionAction?: {
     name?: string;
     category?: string;
@@ -273,30 +274,49 @@ export function createGoogleProvider(): AdProvider {
       return enumerateAccounts(token);
     },
 
-    // 検索語句レポート（検索キャンペーン。キャンペーン×語句で集計）。消化額の大きい順に最大500行。
+    // 検索語句レポート（検索キャンペーン＋スマートキャンペーン。キャンペーン×語句で集計）。
+    // スマートキャンペーンの語句は search_term_view に出ないため専用ビューも併せて引く。
     async listSearchTerms(conn, days): Promise<SearchTermRow[]> {
       const token = await freshToken(conn);
       const customerId = cid(conn);
       const dates = lastDatesJst(days);
+      const range = `segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'`;
+      const metricsSel = `metrics.impressions, metrics.clicks, metrics.cost_micros,
+                metrics.conversions, metrics.conversions_value`;
+
       const rows = await gaqlSearch(
         token,
         customerId,
-        `SELECT search_term_view.search_term, campaign.id, campaign.name,
-                metrics.impressions, metrics.clicks, metrics.cost_micros,
-                metrics.conversions, metrics.conversions_value
+        `SELECT search_term_view.search_term, campaign.id, campaign.name, ${metricsSel}
          FROM search_term_view
-         WHERE segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'
+         WHERE ${range}
          ORDER BY metrics.cost_micros DESC
          LIMIT 500`,
         loginCid(conn)
       );
+      // スマートキャンペーン分（無いアカウントではエラーになり得るため個別に握りつぶす）
+      let smartRows: SearchRow[] = [];
+      try {
+        smartRows = await gaqlSearch(
+          token,
+          customerId,
+          `SELECT smart_campaign_search_term_view.search_term, campaign.id, campaign.name, ${metricsSel}
+           FROM smart_campaign_search_term_view
+           WHERE ${range}
+           LIMIT 500`,
+          loginCid(conn)
+        );
+      } catch {
+        // smart campaign 非対応・0件アカウントでは無視して通常分のみ返す
+      }
+
       // search_term_view は広告グループ粒度なので、キャンペーン×語句で集計し直す
       const agg = new Map<string, SearchTermRow>();
-      for (const r of rows) {
-        const term = r.searchTermView?.searchTerm;
+      for (const r of [...rows, ...smartRows]) {
+        const term = r.searchTermView?.searchTerm ?? r.smartCampaignSearchTermView?.searchTerm;
         const campaignId = r.campaign?.id;
         if (!term || !campaignId) continue;
-        const key = `${campaignId} ${term}`;
+        const key = `${campaignId} ${term}`;
         const cur = agg.get(key) ?? {
           campaignExternalId: String(campaignId),
           campaignName: r.campaign?.name ?? "(不明)",

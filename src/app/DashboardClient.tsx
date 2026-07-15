@@ -572,6 +572,56 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
   );
 }
 
+// ── 左サイドバー（セクションナビ） ─────────────────────
+
+const NAV_ITEMS: { id: string; label: string; icon: typeof Plug }[] = [
+  { id: "sec-kpi", label: "ダッシュボード", icon: BarChart3 },
+  { id: "sec-connect", label: "媒体接続", icon: Plug },
+  { id: "sec-platforms", label: "媒体別パフォーマンス", icon: FileText },
+  { id: "sec-campaigns", label: "キャンペーン", icon: Play },
+  { id: "sec-insights", label: "AI インサイト", icon: Sparkles },
+];
+
+function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: string) => void }) {
+  return (
+    <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-neutral-950 border-r border-neutral-800 p-4 z-40">
+      <div className="flex items-center gap-2.5 mb-6 px-1">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 via-cyan-500 to-emerald-400 flex items-center justify-center text-white font-black text-xs">
+          AD
+        </div>
+        <div>
+          <p className="text-white font-bold text-sm leading-tight">Ad Agent</p>
+          <p className="text-[10px] text-gray-500 leading-tight">統合ダッシュボード</p>
+        </div>
+      </div>
+      <nav className="space-y-1">
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className={clsx(
+              "w-full flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 transition-colors text-left",
+              active === item.id
+                ? "bg-neutral-800 text-white"
+                : "text-gray-400 hover:text-white hover:bg-neutral-900"
+            )}
+          >
+            <item.icon size={15} className="shrink-0" />
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <button
+        onClick={() => signOut({ callbackUrl: "/login" })}
+        className="mt-auto flex items-center gap-2.5 text-sm text-gray-500 hover:text-gray-300 px-3 py-2"
+      >
+        <LogOut size={15} />
+        ログアウト
+      </button>
+    </aside>
+  );
+}
+
 // ── メイン ─────────────────────────────────────────────
 
 export function DashboardClient({ data }: { data: DashboardData }) {
@@ -581,6 +631,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [openInsight, setOpenInsight] = useState<string | null>(null);
   const [showConnect, setShowConnect] = useState(false);
   const [opsConn, setOpsConn] = useState<ConnectionView | null>(null);
+  const [activeNav, setActiveNav] = useState("sec-kpi");
+
+  const navigate = (id: string) => {
+    setActiveNav(id);
+    if (id === "sec-connect") setShowConnect(true);
+    // 接続パネルは開いた直後にDOMへ現れるため、描画後にスクロールする
+    requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }));
+  };
 
   const platformOf = useMemo(() => new Map(data.platforms.map((p) => [p.id, p])), [data.platforms]);
   const hasConnections = data.platforms.some((p) => p.connections.length > 0);
@@ -740,7 +798,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   ];
 
   return (
-    <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-24">
+    <div className="min-h-screen">
+      <Sidebar active={activeNav} onNavigate={navigate} />
+      <div className="lg:pl-56">
+        <div className="min-h-screen max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-24">
       {/* ヘッダー */}
       <header className="flex flex-wrap items-center gap-3 mb-6">
         <div className="flex items-center gap-2.5 mr-auto">
@@ -806,7 +867,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* 接続パネル（トグル or 未接続時は常時） */}
       {(showConnect || !hasConnections) && (
-        <section className="mb-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+        <section id="sec-connect" className="scroll-mt-6 mb-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
           <h2 className="text-white font-semibold mb-1 flex items-center gap-2">
             <Plug size={16} className="text-sky-400" />
             広告媒体の接続
@@ -913,7 +974,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       {hasConnections && (
         <>
           {/* KPI カード */}
-          <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+          <section id="sec-kpi" className="scroll-mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             {kpis.map((k) => (
               <div key={k.label} className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3">
                 <p className="text-[11px] text-gray-500">{k.label}</p>
@@ -935,7 +996,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </section>
 
               {/* 媒体別テーブル */}
-              <section className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+              <section id="sec-platforms" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
                 <h2 className="text-white font-semibold mb-3">媒体別パフォーマンス</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm whitespace-nowrap">
@@ -981,7 +1042,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </section>
 
               {/* キャンペーンテーブル */}
-              <section className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+              <section id="sec-campaigns" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
                 <h2 className="text-white font-semibold mb-1">キャンペーン</h2>
                 <p className="text-[11px] text-gray-600 mb-3">
                   配信/停止の切替と日予算の変更ができます（API接続時は媒体へ即時反映）
@@ -1058,7 +1119,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
             {/* 右カラム: AI インサイト */}
             <div className="space-y-4 min-w-0">
-              <section className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+              <section id="sec-insights" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <h2 className="text-white font-semibold flex items-center gap-2">
                     <Sparkles size={16} className="text-cyan-400" />
@@ -1137,6 +1198,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
         </>
       )}
+        </div>
+      </div>
     </div>
   );
 }

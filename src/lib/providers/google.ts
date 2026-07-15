@@ -1,4 +1,13 @@
-import type { AdProvider, ProviderConnection, SelectableAccount, SyncResult, TokenSet } from "./types";
+import type {
+  AdProvider,
+  ChangeEventRow,
+  ConversionHealth,
+  ProviderConnection,
+  SearchTermRow,
+  SelectableAccount,
+  SyncResult,
+  TokenSet,
+} from "./types";
 import { ProviderError, lastDatesJst } from "./types";
 
 // Google Ads API（REST）。
@@ -58,8 +67,29 @@ interface SearchRow {
   campaignBudget?: { amountMicros?: string };
   segments?: { date?: string };
   metrics?: { impressions?: string; clicks?: string; costMicros?: string; conversions?: number; conversionsValue?: number };
-  customer?: { id?: string; descriptiveName?: string; manager?: boolean };
+  customer?: {
+    id?: string;
+    descriptiveName?: string;
+    manager?: boolean;
+    conversionTrackingSetting?: { conversionTrackingStatus?: string };
+  };
   customerClient?: { id?: string; descriptiveName?: string; manager?: boolean; level?: string };
+  searchTermView?: { searchTerm?: string };
+  conversionAction?: {
+    name?: string;
+    category?: string;
+    type?: string;
+    status?: string;
+    primaryForGoal?: boolean;
+    countingType?: string;
+    valueSettings?: { defaultValue?: number };
+  };
+  changeEvent?: {
+    changeDateTime?: string;
+    changeResourceType?: string;
+    resourceChangeOperation?: string;
+    changedFields?: string;
+  };
 }
 
 // エラー応答から GoogleAdsFailure の詳細メッセージを取り出す（無ければ汎用 message）
@@ -241,6 +271,135 @@ export function createGoogleProvider(): AdProvider {
     async listAccounts(conn): Promise<SelectableAccount[]> {
       const token = await freshToken(conn);
       return enumerateAccounts(token);
+    },
+
+    // 検索語句レポート（検索キャンペーン。キャンペーン×語句で集計）。消化額の大きい順に最大500行。
+    async listSearchTerms(conn, days): Promise<SearchTermRow[]> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const dates = lastDatesJst(days);
+      const rows = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT search_term_view.search_term, campaign.id, campaign.name,
+                metrics.impressions, metrics.clicks, metrics.cost_micros,
+                metrics.conversions, metrics.conversions_value
+         FROM search_term_view
+         WHERE segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'
+         ORDER BY metrics.cost_micros DESC
+         LIMIT 500`,
+        loginCid(conn)
+      );
+      // search_term_view は広告グループ粒度なので、キャンペーン×語句で集計し直す
+      const agg = new Map<string, SearchTermRow>();
+      for (const r of rows) {
+        const term = r.searchTermView?.searchTerm;
+        const campaignId = r.campaign?.id;
+        if (!term || !campaignId) continue;
+        const key = `${campaignId} ${term}`;
+        const cur = agg.get(key) ?? {
+          campaignExternalId: String(campaignId),
+          campaignName: r.campaign?.name ?? "(不明)",
+          term,
+          impressions: 0,
+          clicks: 0,
+          costYen: 0,
+          conversions: 0,
+          conversionValueYen: 0,
+        };
+        cur.impressions += Number(r.metrics?.impressions ?? 0);
+        cur.clicks += Number(r.metrics?.clicks ?? 0);
+        cur.costYen += Math.round(Number(r.metrics?.costMicros ?? 0) / 1_000_000);
+        cur.conversions += Number(r.metrics?.conversions ?? 0);
+        cur.conversionValueYen += Math.round(Number(r.metrics?.conversionsValue ?? 0));
+        agg.set(key, cur);
+      }
+      return [...agg.values()].sort((a, b) => b.costYen - a.costYen);
+    },
+
+    // キャンペーン単位の除外キーワードを追加
+    async addNegativeKeyword(conn, campaignExternalId, term, matchType): Promise<void> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const res = await fetch(`${ADS_API}/customers/${customerId}/campaignCriteria:mutate`, {
+        method: "POST",
+        headers: adsHeaders(token, loginCid(conn)),
+        body: JSON.stringify({
+          operations: [
+            {
+              create: {
+                campaign: `customers/${customerId}/campaigns/${campaignExternalId}`,
+                negative: true,
+                keyword: { text: term, matchType },
+              },
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+        throw new ProviderError(`除外キーワード追加に失敗: ${adsErrorMessage(json, res.status)}`);
+      }
+    },
+
+    // コンバージョン計測のヘルスチェック（トラッキング状態＋有効なCVアクション一覧）
+    async conversionHealth(conn): Promise<ConversionHealth> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const login = loginCid(conn);
+      const cust = await gaqlSearch(
+        token,
+        customerId,
+        "SELECT customer.conversion_tracking_setting.conversion_tracking_status FROM customer",
+        login
+      );
+      const actions = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT conversion_action.name, conversion_action.category, conversion_action.type,
+                conversion_action.status, conversion_action.primary_for_goal,
+                conversion_action.counting_type, conversion_action.value_settings.default_value
+         FROM conversion_action WHERE conversion_action.status = 'ENABLED'`,
+        login
+      );
+      return {
+        trackingStatus: cust[0]?.customer?.conversionTrackingSetting?.conversionTrackingStatus ?? "UNKNOWN",
+        actions: actions.map((r) => ({
+          name: r.conversionAction?.name ?? "(不明)",
+          category: r.conversionAction?.category ?? "",
+          type: r.conversionAction?.type ?? "",
+          primary: r.conversionAction?.primaryForGoal === true,
+          countingType: r.conversionAction?.countingType ?? "",
+          hasValue: (r.conversionAction?.valueSettings?.defaultValue ?? 0) > 0,
+        })),
+      };
+    },
+
+    // 直近の変更履歴（学習期間ガードの判定用）。change_event は日付範囲と LIMIT が必須。
+    async recentChanges(conn, days): Promise<ChangeEventRow[]> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const dates = lastDatesJst(Math.min(days, 28));
+      const rows = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT change_event.change_date_time, change_event.change_resource_type,
+                change_event.resource_change_operation, change_event.changed_fields
+         FROM change_event
+         WHERE change_event.change_date_time >= '${dates[0]} 00:00:00'
+           AND change_event.change_date_time <= '${dates[dates.length - 1]} 23:59:59'
+         ORDER BY change_event.change_date_time DESC
+         LIMIT 50`,
+        loginCid(conn)
+      );
+      return rows
+        .filter((r) => r.changeEvent?.changeDateTime)
+        .map((r) => ({
+          at: r.changeEvent!.changeDateTime!,
+          resourceType: r.changeEvent?.changeResourceType ?? "",
+          operation: r.changeEvent?.resourceChangeOperation ?? "",
+          fields: r.changeEvent?.changedFields ?? "",
+        }));
     },
 
     async sync(conn, days): Promise<SyncResult> {

@@ -261,6 +261,285 @@ function TrendChart({
   );
 }
 
+// ── 運用チェック（検索語句×AI除外・計測ヘルス・学習期間ガード） ──
+
+interface SearchTermView {
+  id: string;
+  campaignExternalId: string;
+  campaignName: string;
+  term: string;
+  impressions: number;
+  clicks: number;
+  costYen: number;
+  conversions: number;
+  aiVerdict: string | null;
+  aiReason: string | null;
+  status: string;
+}
+
+interface HealthView {
+  trackingStatus: string;
+  actions: { name: string; category: string; primary: boolean; countingType: string; hasValue: boolean }[];
+}
+
+interface ChangeView {
+  at: string;
+  resourceType: string;
+  operation: string;
+}
+
+function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () => void }) {
+  const [terms, setTerms] = useState<SearchTermView[]>([]);
+  const [health, setHealth] = useState<HealthView | null>(null);
+  const [changes, setChanges] = useState<ChangeView[] | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadTerms = async () => {
+    const res = await fetch(`/api/connections/${conn.id}/search-terms`);
+    const json = (await res.json().catch(() => ({}))) as { terms?: SearchTermView[] };
+    if (res.ok) setTerms(json.terms ?? []);
+  };
+
+  useEffect(() => {
+    loadTerms();
+    (async () => {
+      const res = await fetch(`/api/connections/${conn.id}/health`);
+      const json = (await res.json().catch(() => ({}))) as {
+        health?: HealthView;
+        changes?: ChangeView[];
+        error?: string;
+      };
+      if (res.ok) {
+        setHealth(json.health ?? null);
+        setChanges(json.changes ?? []);
+      } else {
+        setHealthError(json.error ?? "運用チェックの取得に失敗しました");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn.id]);
+
+  const act = async (key: string, fn: () => Promise<Response>, after?: () => Promise<void>) => {
+    setBusy(key);
+    setError(null);
+    try {
+      const res = await fn();
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(json.error ?? "エラーが発生しました");
+        return;
+      }
+      if (after) await after();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const syncTerms = () =>
+    act("sync", () => fetch(`/api/connections/${conn.id}/search-terms`, { method: "POST" }), loadTerms);
+
+  const classify = () =>
+    act("classify", () => fetch(`/api/connections/${conn.id}/search-terms/classify`, { method: "POST" }), loadTerms);
+
+  const exclude = (t: SearchTermView) => {
+    if (!confirm(`「${t.term}」を\nキャンペーン「${t.campaignName}」の除外キーワード（完全一致）に登録しますか？`)) return;
+    act(
+      `ex-${t.id}`,
+      () =>
+        fetch(`/api/connections/${conn.id}/search-terms/exclude`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaignExternalId: t.campaignExternalId, term: t.term, matchType: "EXACT" }),
+        }),
+      loadTerms
+    );
+  };
+
+  const verdictBadge = (t: SearchTermView) => {
+    if (t.status === "excluded")
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-gray-500">除外済み</span>;
+    if (t.aiVerdict === "exclude")
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-900">除外推奨</span>;
+    if (t.aiVerdict === "promote")
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900">昇格候補</span>;
+    if (t.aiVerdict === "keep")
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-gray-400">継続</span>;
+    return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-900 text-gray-600">未分類</span>;
+  };
+
+  const healthIssues: string[] = [];
+  if (health) {
+    if (health.trackingStatus === "NOT_CONVERSION_TRACKED") {
+      healthIssues.push("コンバージョン計測が未設定です（自動入札が学習できません）");
+    }
+    if (health.actions.length > 0 && !health.actions.some((a) => a.primary)) {
+      healthIssues.push("メイン（primary）のコンバージョンアクションがありません");
+    }
+    for (const a of health.actions.filter((a) => a.primary && !a.hasValue)) {
+      healthIssues.push(`「${a.name}」に固定値なし（動的値を送っていない場合は value 入札が使えません）`);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
+      <div
+        className="w-full max-w-3xl bg-neutral-950 border border-neutral-800 rounded-xl p-5 my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles size={16} className="text-sky-400" />
+          <h3 className="text-white font-semibold text-sm">運用チェック — {conn.accountName}</h3>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+            <XIcon size={16} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2 mb-3 text-xs bg-red-950/60 border border-red-900 text-red-300">
+            <AlertTriangle size={13} className="shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {/* 学習期間ガード */}
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-gray-400 mb-1.5">学習期間ガード（直近7日の設定変更）</h4>
+          {changes === null && !healthError ? (
+            <p className="text-xs text-gray-600 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />確認中…</p>
+          ) : healthError ? (
+            <p className="text-xs text-red-400/80">{healthError}</p>
+          ) : changes && changes.length > 0 ? (
+            <div className="rounded-lg px-3 py-2 text-xs bg-amber-950/40 border border-amber-900/60 text-amber-200">
+              直近7日間に <strong>{changes.length}件</strong> の設定変更があります。自動入札の学習期間中の可能性が高いため、
+              追加の変更（予算・入札・ステータス）は学習をリセットする恐れがあります。
+              <ul className="mt-1.5 space-y-0.5 text-amber-200/70">
+                {changes.slice(0, 5).map((c, i) => (
+                  <li key={i}>・{c.at.slice(0, 16)} {c.resourceType} {c.operation}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-emerald-400/80">直近7日間の設定変更はありません。学習は安定していると考えられます。</p>
+          )}
+        </div>
+
+        {/* 計測ヘルスチェック */}
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-gray-400 mb-1.5">計測ヘルスチェック</h4>
+          {!health && !healthError ? (
+            <p className="text-xs text-gray-600 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />確認中…</p>
+          ) : health ? (
+            <div className="text-xs space-y-1.5">
+              {healthIssues.length === 0 ? (
+                <p className="text-emerald-400/80">計測設定に大きな問題は見つかりませんでした。</p>
+              ) : (
+                <ul className="space-y-1">
+                  {healthIssues.map((h, i) => (
+                    <li key={i} className="text-amber-300 flex items-start gap-1.5">
+                      <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="text-gray-500">
+                有効なCVアクション: {health.actions.length}件
+                {health.actions.slice(0, 6).map((a) => (
+                  <span key={a.name} className="inline-block ml-2 text-gray-400">
+                    {a.name}
+                    {a.primary && <span className="text-sky-400">（メイン）</span>}
+                    {a.hasValue ? <span className="text-emerald-500/80">・値あり</span> : null}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* 検索語句レポート */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <h4 className="text-xs font-semibold text-gray-400">検索語句レポート（直近30日・消化額順）</h4>
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={syncTerms}
+                disabled={busy !== null}
+                className="flex items-center gap-1 text-[11px] bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-gray-200 rounded px-2 py-1"
+              >
+                {busy === "sync" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                語句を同期
+              </button>
+              <button
+                onClick={classify}
+                disabled={busy !== null || terms.length === 0}
+                className="flex items-center gap-1 text-[11px] bg-sky-800 hover:bg-sky-700 disabled:opacity-50 text-white rounded px-2 py-1"
+              >
+                {busy === "classify" ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                AIで分類
+              </button>
+            </div>
+          </div>
+
+          {terms.length === 0 ? (
+            <p className="text-xs text-gray-600">
+              まだ検索語句がありません。「語句を同期」で媒体から取得してください。
+            </p>
+          ) : (
+            <div className="overflow-x-auto max-h-80 overflow-y-auto border border-neutral-800 rounded-lg">
+              <table className="w-full text-xs">
+                <thead className="text-gray-500 sticky top-0 bg-neutral-950">
+                  <tr className="[&>th]:px-2.5 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-normal">
+                    <th>検索語句</th>
+                    <th>キャンペーン</th>
+                    <th className="!text-right">消化額</th>
+                    <th className="!text-right">Click</th>
+                    <th className="!text-right">CV</th>
+                    <th>AI判定</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody className="text-gray-300">
+                  {terms.map((t) => (
+                    <tr key={t.id} className="border-t border-neutral-900">
+                      <td className="px-2.5 py-1.5 max-w-[180px]">
+                        <span className="text-gray-200">{t.term}</span>
+                        {t.aiReason && <p className="text-[10px] text-gray-600">{t.aiReason}</p>}
+                      </td>
+                      <td className="px-2.5 py-1.5 max-w-[130px] truncate text-gray-500">{t.campaignName}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{yen(t.costYen)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{num(t.clicks)}</td>
+                      <td className="px-2.5 py-1.5 text-right tabular-nums">{t.conversions.toFixed(1)}</td>
+                      <td className="px-2.5 py-1.5">{verdictBadge(t)}</td>
+                      <td className="px-2.5 py-1.5 text-right">
+                        {t.status !== "excluded" && (
+                          <button
+                            onClick={() => exclude(t)}
+                            disabled={busy !== null}
+                            className={clsx(
+                              "text-[10px] rounded px-1.5 py-0.5 border disabled:opacity-50",
+                              t.aiVerdict === "exclude"
+                                ? "border-red-900 bg-red-950/60 text-red-300 hover:bg-red-900/60"
+                                : "border-neutral-700 text-gray-400 hover:text-white"
+                            )}
+                          >
+                            除外
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── メイン ─────────────────────────────────────────────
 
 export function DashboardClient({ data }: { data: DashboardData }) {
@@ -269,6 +548,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [openInsight, setOpenInsight] = useState<string | null>(null);
   const [showConnect, setShowConnect] = useState(false);
+  const [opsConn, setOpsConn] = useState<ConnectionView | null>(null);
 
   const platformOf = useMemo(() => new Map(data.platforms.map((p) => [p.id, p])), [data.platforms]);
   const hasConnections = data.platforms.some((p) => p.connections.length > 0);
@@ -490,6 +770,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       )}
 
+      {opsConn && <OpsCheckModal conn={opsConn} onClose={() => setOpsConn(null)} />}
+
       {/* 接続パネル（トグル or 未接続時は常時） */}
       {(showConnect || !hasConnections) && (
         <section className="mb-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
@@ -560,14 +842,23 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             月予算{c.monthlyBudgetYen ? ` ${yen(c.monthlyBudgetYen)}` : "未設定"}
                           </button>
                           {p.id === "google" && c.mode === "api" && (
-                            <button
-                              onClick={() => selectAccount(c, p.label)}
-                              disabled={busy === `acct-${c.id}`}
-                              className="text-gray-400 hover:text-white disabled:opacity-50"
-                              title="接続する広告アカウントを選択"
-                            >
-                              アカウント選択
-                            </button>
+                            <>
+                              <button
+                                onClick={() => selectAccount(c, p.label)}
+                                disabled={busy === `acct-${c.id}`}
+                                className="text-gray-400 hover:text-white disabled:opacity-50"
+                                title="接続する広告アカウントを選択"
+                              >
+                                アカウント選択
+                              </button>
+                              <button
+                                onClick={() => setOpsConn(c)}
+                                className="text-sky-400/80 hover:text-sky-300"
+                                title="検索語句のAI除外提案・計測ヘルス・学習期間チェック"
+                              >
+                                運用チェック
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={() => disconnect(c.id, p.label)}

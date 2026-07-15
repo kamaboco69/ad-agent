@@ -26,6 +26,7 @@ model Organization {
   users       User[]
   connections AdConnection[]
   insights    Insight[]
+  searchTerms SearchTerm[]
 }
 
 model User {
@@ -114,6 +115,7 @@ model AdConnection {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   campaigns    Campaign[]
+  searchTerms  SearchTerm[]
 
   @@index([organizationId])
   @@index([organizationId, platform])
@@ -157,6 +159,33 @@ model DailyMetric {
 
   @@unique([campaignId, date])
   @@index([organizationId, date])
+}
+
+// 検索語句レポート（Google 検索キャンペーン）。同期のたびに接続単位で全入れ替え。
+// aiVerdict は Claude による分類: exclude（除外推奨）/ keep（継続）/ promote（昇格候補）
+model SearchTerm {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  connectionId       String
+  campaignExternalId String
+  campaignName       String
+  term               String
+  impressions        Int      @default(0)
+  clicks             Int      @default(0)
+  costYen            Int      @default(0)
+  conversions        Float    @default(0)
+  conversionValueYen Int      @default(0)
+  aiVerdict          String?
+  aiReason           String?
+  status             String   @default("new") // new / excluded / dismissed
+  periodDays         Int      @default(30)
+  syncedAt           DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connection   AdConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, campaignExternalId, term])
+  @@index([connectionId, status])
 }
 
 // AI インサイト（Claude が実績を分析したレポート/改善提案/予算アラート）。

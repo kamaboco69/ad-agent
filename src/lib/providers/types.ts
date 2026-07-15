@@ -55,6 +55,39 @@ export interface TokenSet {
   loginCustomerId?: string | null; // MCC経由で接続する場合の親マネージャーID
 }
 
+// 検索語句レポートの1行（キャンペーン×語句で集計済み）
+export interface SearchTermRow {
+  campaignExternalId: string;
+  campaignName: string;
+  term: string;
+  impressions: number;
+  clicks: number;
+  costYen: number;
+  conversions: number;
+  conversionValueYen: number;
+}
+
+// コンバージョン計測のヘルスチェック結果
+export interface ConversionHealth {
+  trackingStatus: string; // 例: CONVERSION_TRACKING_MANAGED_BY_SELF / NOT_CONVERSION_TRACKED
+  actions: Array<{
+    name: string;
+    category: string;
+    type: string;
+    primary: boolean;
+    countingType: string;
+    hasValue: boolean;
+  }>;
+}
+
+// アカウントの変更履歴（学習期間ガードの判定用）
+export interface ChangeEventRow {
+  at: string; // 変更日時
+  resourceType: string;
+  operation: string;
+  fields: string;
+}
+
 // 広告媒体アダプタの共通インターフェース。
 // 実装は「実APIの資格情報が env に揃っている場合のみ」有効（configured()）。
 // 未対応の操作は ProviderError を throw する。
@@ -68,6 +101,16 @@ export interface AdProvider {
   sync(conn: ProviderConnection, days: number): Promise<SyncResult>;
   setCampaignStatus(conn: ProviderConnection, externalId: string, status: "active" | "paused"): Promise<void>;
   setDailyBudget(conn: ProviderConnection, externalId: string, yen: number): Promise<void>;
+  // ── 運用改善（対応する媒体のみ実装。現状 Google Ads のみ） ──
+  listSearchTerms?(conn: ProviderConnection, days: number): Promise<SearchTermRow[]>;
+  addNegativeKeyword?(
+    conn: ProviderConnection,
+    campaignExternalId: string,
+    term: string,
+    matchType: "EXACT" | "PHRASE"
+  ): Promise<void>;
+  conversionHealth?(conn: ProviderConnection): Promise<ConversionHealth>;
+  recentChanges?(conn: ProviderConnection, days: number): Promise<ChangeEventRow[]>;
 }
 
 export class ProviderError extends Error {

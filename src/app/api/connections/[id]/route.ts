@@ -36,8 +36,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       where: { id },
       data: { externalAccountId: newAccount, loginCustomerId: newLogin, accountName: newName, status: "connected", lastError: null },
     });
-    // 旧アカウントのキャンペーン/実績を削除（DailyMetric はカスケード削除）してから再同期
+    // 旧アカウントのキャンペーン/実績/検索語句を削除（DailyMetric はカスケード削除）してから再同期
     await prisma.campaign.deleteMany({ where: { connectionId: id } });
+    await prisma.searchTerm.deleteMany({ where: { connectionId: id } });
     const outcome = await syncConnection(updated, DEFAULT_SYNC_DAYS);
     return Response.json({ connection: { id: updated.id, externalAccountId: updated.externalAccountId }, sync: outcome });
   }

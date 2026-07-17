@@ -140,24 +140,33 @@ export async function gscSummaryText(siteUrl: string, token: string): Promise<st
   );
 }
 
-// 接続直後に既定の接続先（最初のGA4プロパティ / GSCサイト）を解決する
-export async function resolveDefaultTarget(
+// 選択可能な接続先（GA4プロパティ / GSCサイト）の一覧
+export async function listTargets(
   service: IntegrationId,
   accessToken: string
-): Promise<{ externalId: string; name: string }> {
+): Promise<Array<{ externalId: string; name: string }>> {
   const H = { Authorization: `Bearer ${accessToken}` };
   if (service === "ga4") {
     const res = await fetch("https://analyticsadmin.googleapis.com/v1beta/accountSummaries?pageSize=50", { headers: H });
     const json = (await res.json().catch(() => ({}))) as {
       accountSummaries?: Array<{ propertySummaries?: Array<{ property?: string; displayName?: string }> }>;
     };
-    const prop = json.accountSummaries?.flatMap((a) => a.propertySummaries ?? [])[0];
-    if (!prop?.property) throw new Error("アクセス可能な GA4 プロパティが見つかりません");
-    return { externalId: prop.property, name: prop.displayName ?? prop.property };
+    return (json.accountSummaries ?? [])
+      .flatMap((a) => a.propertySummaries ?? [])
+      .filter((p) => p.property)
+      .map((p) => ({ externalId: p.property!, name: p.displayName ?? p.property! }));
   }
   const res = await fetch("https://www.googleapis.com/webmasters/v3/sites", { headers: H });
   const json = (await res.json().catch(() => ({}))) as { siteEntry?: Array<{ siteUrl?: string }> };
-  const site = json.siteEntry?.[0];
-  if (!site?.siteUrl) throw new Error("アクセス可能な Search Console サイトが見つかりません");
-  return { externalId: site.siteUrl, name: site.siteUrl };
+  return (json.siteEntry ?? []).filter((s) => s.siteUrl).map((s) => ({ externalId: s.siteUrl!, name: s.siteUrl! }));
+}
+
+// 接続直後の既定は一覧の先頭（後から「対象変更」で切替可能）
+export async function resolveDefaultTarget(
+  service: IntegrationId,
+  accessToken: string
+): Promise<{ externalId: string; name: string }> {
+  const targets = await listTargets(service, accessToken);
+  if (!targets[0]) throw new Error(`アクセス可能な${service === "ga4" ? " GA4 プロパティ" : " Search Console サイト"}が見つかりません`);
+  return targets[0];
 }

@@ -1216,6 +1216,39 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-gray-300 truncate">{integ.accountName}</span>
                       <button
+                        onClick={async () => {
+                          const res = await fetch(`/api/integrations/${s.id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ list: true }),
+                          });
+                          const json = (await res.json().catch(() => ({}))) as {
+                            targets?: { externalId: string; name: string }[];
+                            error?: string;
+                          };
+                          if (!res.ok || !json.targets?.length) {
+                            setBanner({ kind: "error", text: json.error ?? "対象一覧の取得に失敗しました" });
+                            return;
+                          }
+                          const menu = json.targets.map((t, i) => `${i + 1}) ${t.name}`).join("\n");
+                          const input = prompt(`${s.label} の対象を番号で選択:\n${menu}`);
+                          if (input === null) return;
+                          const idx = Number(input.trim()) - 1;
+                          const chosen = json.targets[idx];
+                          if (!chosen) return;
+                          call(`integ-sw-${s.id}`, () =>
+                            fetch(`/api/integrations/${s.id}`, {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify(chosen),
+                            })
+                          );
+                        }}
+                        className="text-gray-400 hover:text-white shrink-0"
+                      >
+                        対象変更
+                      </button>
+                      <button
                         onClick={() => {
                           if (!confirm(`${s.label} の連携を解除しますか？`)) return;
                           call(`integ-${s.id}`, () => fetch(`/api/integrations/${s.id}`, { method: "DELETE" }));

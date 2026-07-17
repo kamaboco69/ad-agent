@@ -85,6 +85,11 @@ export default async function HomePage({
     }),
   ]);
 
+  const integrations = await prisma.integration.findMany({
+    where: { organizationId },
+    select: { service: true, status: true, accountName: true },
+  });
+
   // 集計（org単位のデータ量は小さいのでJSで集計）
   const totals = emptyKpi();
   const dailyMap = new Map<string, { date: string; byPlatform: Record<string, number>; total: number }>();
@@ -157,6 +162,7 @@ export default async function HomePage({
           lastError: c.lastError,
         })),
     })),
+    integrations,
     insights: insights.map((i) => ({
       id: i.id,
       kind: i.kind,

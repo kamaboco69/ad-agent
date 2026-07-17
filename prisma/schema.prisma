@@ -194,6 +194,23 @@ model SearchTerm {
   @@index([connectionId, status])
 }
 
+// 分析サービス連携（GA4 / Search Console 等）。組織×サービスで1件、ワンタッチOAuth。
+model Integration {
+  id             String   @id @default(cuid())
+  organizationId String
+  service        String // ga4 / gsc（将来: meta_pixel, gmb 等）
+  status         String   @default("connected")
+  accountName    String // 表示名（GA4プロパティ名 / GSCサイトURL）
+  externalId     String? // GA4 property resource name / GSC siteUrl
+  accessToken    String? // 暗号化
+  refreshToken   String? // 暗号化
+  scope          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, service])
+}
+
 // 変更ログ台帳（運用ルール§0）。アプリ経由の全変更を自動起票し、14日後に効果を自動検証する。
 model ChangeLog {
   id             String    @id @default(cuid())

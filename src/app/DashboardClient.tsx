@@ -77,7 +77,14 @@ export interface InsightView {
   createdAt: string;
 }
 
+export interface IntegrationView {
+  service: string;
+  status: string;
+  accountName: string;
+}
+
 export interface DashboardData {
+  integrations: IntegrationView[];
   days: number;
   totals: Kpi;
   daily: { date: string; byPlatform: Record<string, number>; total: number }[];
@@ -875,7 +882,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     const error = sp.get("connect_error");
     if (connected) setBanner({ kind: "ok", text: `${platformOf.get(connected)?.label ?? connected} を接続しました` });
     if (error) setBanner({ kind: "error", text: `接続に失敗しました: ${error}` });
-    if (connected || error) window.history.replaceState(null, "", "/");
+    const ic = sp.get("integ_connected");
+    const ie = sp.get("integ_error");
+    if (ic) setBanner({ kind: "ok", text: `${ic === "ga4" ? "Google アナリティクス" : "Search Console"} を連携しました` });
+    if (ie) setBanner({ kind: "error", text: `連携に失敗しました: ${ie}` });
+    if (connected || error || ic || ie) window.history.replaceState(null, "", "/");
   }, [platformOf]);
 
   async function call(key: string, fn: () => Promise<Response>) {
@@ -1184,6 +1195,48 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 )}
               </div>
             ))}
+          </div>
+
+          {/* 分析サービス連携（GA4 / Search Console。ワンタッチOAuth） */}
+          <h3 className="text-sm font-medium text-white mt-5 mb-2">分析サービス連携</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { id: "ga4", label: "Google アナリティクス（GA4）", api: "GA4 Data API" },
+              { id: "gsc", label: "Google Search Console", api: "Search Console API" },
+            ].map((s) => {
+              const integ = data.integrations.find((i) => i.service === s.id);
+              return (
+                <div key={s.id} className="border border-neutral-800 rounded-lg p-3.5 bg-black/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={clsx("w-2.5 h-2.5 rounded-full", integ ? "bg-emerald-400" : "bg-neutral-700")} />
+                    <span className="text-sm font-medium text-white">{s.label}</span>
+                    <span className="ml-auto text-[10px] text-gray-600">{s.api}</span>
+                  </div>
+                  {integ ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-300 truncate">{integ.accountName}</span>
+                      <button
+                        onClick={() => {
+                          if (!confirm(`${s.label} の連携を解除しますか？`)) return;
+                          call(`integ-${s.id}`, () => fetch(`/api/integrations/${s.id}`, { method: "DELETE" }));
+                        }}
+                        className="ml-auto text-gray-600 hover:text-red-400 shrink-0"
+                        title="連携解除"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <a
+                      href={`/api/integrations/${s.id}`}
+                      className="flex items-center justify-center gap-1.5 text-xs bg-sky-700 hover:bg-sky-600 text-white rounded-md py-1.5 transition-colors"
+                    >
+                      ワンタッチ連携
+                    </a>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

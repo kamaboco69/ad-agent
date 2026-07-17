@@ -379,9 +379,11 @@ export async function runWeeklyInsights(force = false): Promise<{ generated: num
     distinct: ["organizationId"],
   });
 
+  const budgetStart = Date.now();
   let generated = 0;
   let skipped = 0;
   for (const { organizationId } of orgs) {
+    if (Date.now() - budgetStart > 120_000) { skipped++; continue; } // 時間予算超過→次回cronで処理
     if (!force) {
       const recent = await prisma.insight.findFirst({
         where: {
@@ -419,9 +421,11 @@ export async function runMonthlyReview(force = false): Promise<{ generated: numb
     select: { organizationId: true },
     distinct: ["organizationId"],
   });
+  const budgetStart = Date.now();
   let generated = 0;
   let skipped = 0;
   for (const { organizationId } of orgs) {
+    if (Date.now() - budgetStart > 120_000) { skipped++; continue; } // 時間予算超過→次回cronで処理
     if (!force) {
       const recent = await prisma.insight.findFirst({
         where: {

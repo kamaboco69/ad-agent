@@ -841,6 +841,14 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
           </button>
         ))}
       </nav>
+      <a
+        href="/report"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 bg-sky-900/40 text-sky-300 hover:bg-sky-900/70 border border-sky-900"
+        title="クライアント提出用レポート（プレビュー→PDF保存）"
+      >
+        <FileText size={15} />
+        クライアントレポート
+      </a>
       <button
         onClick={() => signOut({ callbackUrl: "/login" })}
         className="mt-auto flex items-center gap-2.5 text-sm text-gray-500 hover:text-gray-300 px-3 py-2"

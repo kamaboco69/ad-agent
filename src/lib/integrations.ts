@@ -68,6 +68,78 @@ export async function exchangeIntegrationCode(code: string, redirectUri: string)
   return json;
 }
 
+// リフレッシュトークンからアクセストークンを取得（GA4/GSC 読み取り用）
+export async function refreshIntegrationToken(refreshToken: string): Promise<string | null> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: clientId(),
+      client_secret: clientSecret(),
+      refresh_token: refreshToken,
+    }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { access_token?: string };
+  return json.access_token ?? null;
+}
+
+// GA4: 直近28日のチャネル別＋ランディングページ別サマリーをテキスト化
+export async function ga4SummaryText(property: string, token: string): Promise<string> {
+  const run = async (body: Record<string, unknown>) => {
+    const res = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return (await res.json().catch(() => ({}))) as {
+      rows?: Array<{ dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }>;
+    };
+  };
+  const dateRanges = [{ startDate: "28daysAgo", endDate: "yesterday" }];
+  const metrics = [{ name: "sessions" }, { name: "engagementRate" }, { name: "conversions" }];
+  const ch = await run({ dateRanges, metrics, dimensions: [{ name: "sessionDefaultChannelGroup" }], limit: 8 });
+  const lp = await run({
+    dateRanges,
+    metrics,
+    dimensions: [{ name: "landingPage" }],
+    orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+    limit: 10,
+  });
+  const row = (r: { dimensionValues?: Array<{ value?: string }>; metricValues?: Array<{ value?: string }> }) => {
+    const [s, e, c] = (r.metricValues ?? []).map((m) => Number(m.value ?? 0));
+    return `${r.dimensionValues?.[0]?.value ?? "?"}: セッション${s} / エンゲージ率${(e * 100).toFixed(0)}% / CV${c}`;
+  };
+  const lines: string[] = ["【GA4（直近28日）】"];
+  if (ch.rows?.length) lines.push("チャネル別:", ...ch.rows.map((r) => `- ${row(r)}`));
+  if (lp.rows?.length) lines.push("ランディングページ別(上位):", ...lp.rows.map((r) => `- ${row(r)}`));
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
+// GSC: 直近28日の検索クエリ上位をテキスト化
+export async function gscSummaryText(siteUrl: string, token: string): Promise<string> {
+  const end = new Date(Date.now() - 2 * 86400_000).toISOString().slice(0, 10);
+  const start = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
+  const res = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ startDate: start, endDate: end, dimensions: ["query"], rowLimit: 15 }),
+    }
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    rows?: Array<{ keys?: string[]; clicks?: number; impressions?: number; position?: number }>;
+  };
+  if (!json.rows?.length) return "";
+  return (
+    "【Search Console 自然検索（直近28日・上位クエリ）】\n" +
+    json.rows
+      .map((r) => `- 「${r.keys?.[0]}」 クリック${r.clicks} / 表示${r.impressions} / 平均順位${r.position?.toFixed(1)}`)
+      .join("\n")
+  );
+}
+
 // 接続直後に既定の接続先（最初のGA4プロパティ / GSCサイト）を解決する
 export async function resolveDefaultTarget(
   service: IntegrationId,

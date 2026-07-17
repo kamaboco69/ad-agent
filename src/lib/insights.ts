@@ -257,6 +257,30 @@ async function contextText(organizationId: string, days: number): Promise<string
   return lines.length ? "\n\n" + lines.join("\n") : "";
 }
 
+// GA4 / Search Console 連携データを分析材料として併記する（未連携・失敗時は空文字）
+async function integrationsText(organizationId: string): Promise<string> {
+  const { decryptSecret } = await import("@/lib/crypto");
+  const { refreshIntegrationToken, ga4SummaryText, gscSummaryText } = await import("@/lib/integrations");
+  const integs = await prisma.integration.findMany({ where: { organizationId, status: "connected" } });
+  const parts: string[] = [];
+  for (const i of integs) {
+    try {
+      const rt = i.refreshToken ? decryptSecret(i.refreshToken) : null;
+      if (!rt || !i.externalId) continue;
+      const token = await refreshIntegrationToken(rt);
+      if (!token) continue;
+      if (i.service === "ga4") parts.push(await ga4SummaryText(i.externalId, token));
+      if (i.service === "gsc") parts.push(await gscSummaryText(i.externalId, token));
+    } catch {
+      // 個別失敗はスキップ（レポート本体は生成する）
+    }
+  }
+  const text = parts.filter(Boolean).join("\n\n");
+  return text
+    ? `\n\n${text}\n\n※GA4/GSCデータの活用ルール: 広告CTRが高いのにCVが少ないキャンペーンは、GA4のランディングページ実績（エンゲージ率・CV）から「広告側の問題かLP側の問題か」を切り分けて指摘する。自然検索で上位（平均順位3位以内）のクエリに広告費を使っている場合はカニバリの可能性を指摘する。`
+    : "";
+}
+
 // 直近7日の変更ログを分析データに併記する（手順書§10: 実施アクションの併記）
 async function recentActionsText(organizationId: string): Promise<string> {
   const actions = await prisma.changeLog.findMany({
@@ -304,7 +328,10 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
       {
         role: "user",
         content:
-          summaryToText(summary) + (await contextText(organizationId, days)) + (await recentActionsText(organizationId)),
+          summaryToText(summary) +
+          (await contextText(organizationId, days)) +
+          (await integrationsText(organizationId)) +
+          (await recentActionsText(organizationId)),
       },
     ],
   });

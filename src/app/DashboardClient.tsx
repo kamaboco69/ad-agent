@@ -842,8 +842,16 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
         ))}
       </nav>
       <a
+        href="/analysis"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-300 hover:bg-neutral-900 border border-neutral-800"
+        title="結果→分解→機会→規律のプロ視点で自動診断し、データ根拠つきの提案を表示"
+      >
+        <BarChart3 size={15} />
+        診断分析
+      </a>
+      <a
         href="/report"
-        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 bg-sky-900/40 text-sky-300 hover:bg-sky-900/70 border border-sky-900"
+        className="mt-2 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 bg-sky-900/40 text-sky-300 hover:bg-sky-900/70 border border-sky-900"
         title="クライアント提出用レポート（プレビュー→PDF保存）"
       >
         <FileText size={15} />

@@ -38,10 +38,10 @@ env:
     secret: ADAGENT_GOOGLE_ADS_CLIENT_SECRET
   - variable: GOOGLE_ADS_DEVELOPER_TOKEN
     secret: ADAGENT_GOOGLE_ADS_DEVELOPER_TOKEN
-  # - variable: META_ADS_APP_ID
-  #   secret: ADAGENT_META_ADS_APP_ID
-  # - variable: META_ADS_APP_SECRET
-  #   secret: ADAGENT_META_ADS_APP_SECRET
+  - variable: META_ADS_APP_ID
+    secret: ADAGENT_META_ADS_APP_ID
+  - variable: META_ADS_APP_SECRET
+    secret: ADAGENT_META_ADS_APP_SECRET
   # - variable: TIKTOK_ADS_APP_ID
   #   secret: ADAGENT_TIKTOK_ADS_APP_ID
   # - variable: TIKTOK_ADS_APP_SECRET

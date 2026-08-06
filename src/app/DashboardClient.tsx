@@ -87,7 +87,7 @@ export interface DashboardData {
   integrations: IntegrationView[];
   days: number;
   totals: Kpi;
-  daily: { date: string; byPlatform: Record<string, number>; total: number }[];
+  daily: { date: string; byPlatform: Record<string, number>; byPlatformValue?: Record<string, number>; total: number }[];
   platformAgg: PlatformRow[];
   campaigns: CampaignRow[];
   platforms: PlatformView[];
@@ -149,7 +149,7 @@ function Markdown({ text }: { text: string }) {
 
 const CW = 800;
 const CH = 250;
-const PAD = { l: 44, r: 10, t: 12, b: 22 };
+const PAD = { l: 44, r: 46, t: 12, b: 22 }; // 右パディングはROAS軸（%）用
 
 function TrendChart({
   daily,
@@ -172,13 +172,28 @@ function TrendChart({
     return m || 1;
   }, [daily, activePlatforms]);
 
+  // 日別ROAS（%）: cost>0 の日のみ。破線・右軸で描画する
+  const roasAt = (d: DashboardData["daily"][number], pid: string): number | null => {
+    const cost = d.byPlatform[pid] ?? 0;
+    const value = d.byPlatformValue?.[pid] ?? 0;
+    return cost > 0 ? (value / cost) * 100 : null;
+  };
+  const maxRoas = useMemo(() => {
+    let m = 0;
+    for (const d of daily) for (const p of activePlatforms) m = Math.max(m, roasAt(d, p.id) ?? 0);
+    return m > 0 ? Math.ceil(m / 100) * 100 : 0; // 100%単位で切り上げ
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daily, activePlatforms]);
+  const showRoas = maxRoas > 0;
+
   const n = daily.length;
   const plotW = CW - PAD.l - PAD.r;
   const plotH = CH - PAD.t - PAD.b;
   const xAt = (i: number) => PAD.l + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
   const yAt = (v: number) => PAD.t + plotH - (v / maxY) * plotH;
 
-  const gridYs = [0.25, 0.5, 0.75, 1].map((f) => ({ v: maxY * f, y: yAt(maxY * f) }));
+  const yAtRoas = (v: number) => PAD.t + plotH - (v / (maxRoas || 1)) * plotH;
+  const gridYs = [0.25, 0.5, 0.75, 1].map((f) => ({ v: maxY * f, roas: maxRoas * f, y: yAt(maxY * f) }));
   const xTickEvery = Math.max(1, Math.ceil(n / 7));
 
   function onMove(e: React.MouseEvent) {
@@ -208,8 +223,18 @@ function TrendChart({
             <text x={PAD.l - 6} y={g.y + 3} textAnchor="end" fontSize={10} fill="#71717a">
               {yenAxis(g.v)}
             </text>
+            {showRoas && (
+              <text x={CW - PAD.r + 6} y={g.y + 3} textAnchor="start" fontSize={10} fill="#0369a1">
+                {g.roas.toFixed(0)}%
+              </text>
+            )}
           </g>
         ))}
+        {showRoas && (
+          <text x={CW - PAD.r + 6} y={PAD.t - 2} textAnchor="start" fontSize={9} fontWeight={700} fill="#0369a1">
+            ROAS
+          </text>
+        )}
         <line x1={PAD.l} x2={CW - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} stroke="#d1d5db" strokeWidth={1} />
         {daily.map((d, i) =>
           i % xTickEvery === 0 ? (
@@ -227,6 +252,34 @@ function TrendChart({
             .join(" ");
           return <path key={p.id} d={dPath} fill="none" stroke={p.color} strokeWidth={2} strokeLinejoin="round" />;
         })}
+        {/* ROAS（破線・右軸）。cost=0 の日は線を切る */}
+        {showRoas &&
+          activePlatforms.map((p) => {
+            let path = "";
+            let pen = false;
+            daily.forEach((d, i) => {
+              const r = roasAt(d, p.id);
+              if (r === null) {
+                pen = false;
+                return;
+              }
+              path += `${pen ? "L" : "M"}${xAt(i).toFixed(1)},${yAtRoas(r).toFixed(1)}`;
+              pen = true;
+            });
+            if (!path) return null;
+            return (
+              <path
+                key={`roas-${p.id}`}
+                d={path}
+                fill="none"
+                stroke={p.color}
+                strokeWidth={1.5}
+                strokeDasharray="5 4"
+                strokeLinejoin="round"
+                opacity={0.75}
+              />
+            );
+          })}
         {hover !== null &&
           activePlatforms.map((p) => (
             <circle
@@ -248,25 +301,40 @@ function TrendChart({
         >
           <div className="text-gray-600 mb-1">{h.date}（計 {yen(h.total)}）</div>
           {activePlatforms
-            .map((p) => ({ p, v: h.byPlatform[p.id] ?? 0 }))
+            .map((p) => ({ p, v: h.byPlatform[p.id] ?? 0, r: roasAt(h, p.id) }))
             .sort((a, b) => b.v - a.v)
-            .map(({ p, v }) => (
+            .map(({ p, v, r }) => (
               <div key={p.id} className="flex items-center gap-1.5 text-gray-800">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
                 <span className="text-gray-600">{p.short}</span>
                 <span className="ml-auto pl-3 tabular-nums">{yen(v)}</span>
+                {r !== null && (
+                  <span className="pl-2 tabular-nums text-sky-700">ROAS {r.toFixed(0)}%</span>
+                )}
               </div>
             ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 px-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 px-1">
         {activePlatforms.map((p) => (
           <span key={p.id} className="inline-flex items-center gap-1.5 text-xs text-gray-600">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
             {p.label}
           </span>
         ))}
+        {showRoas && (
+          <span className="inline-flex items-center gap-3 text-[11px] text-gray-500 ml-auto">
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="#64748b" strokeWidth="2" /></svg>
+              消化額（左軸）
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="22" height="6"><line x1="0" y1="3" x2="22" y2="3" stroke="#0369a1" strokeWidth="1.5" strokeDasharray="5 4" /></svg>
+              ROAS（右軸%）
+            </span>
+          </span>
+        )}
       </div>
     </div>
   );

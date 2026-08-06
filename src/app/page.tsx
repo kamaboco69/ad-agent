@@ -92,7 +92,10 @@ export default async function HomePage({
 
   // 集計（org単位のデータ量は小さいのでJSで集計）
   const totals = emptyKpi();
-  const dailyMap = new Map<string, { date: string; byPlatform: Record<string, number>; total: number }>();
+  const dailyMap = new Map<
+    string,
+    { date: string; byPlatform: Record<string, number>; byPlatformValue: Record<string, number>; total: number }
+  >();
   const platformMap = new Map<string, Kpi>();
   const campaignMap = new Map<string, CampaignRow>();
 
@@ -102,8 +105,9 @@ export default async function HomePage({
 
     addTo(totals, m);
 
-    const d = dailyMap.get(dateKey) ?? { date: dateKey, byPlatform: {}, total: 0 };
+    const d = dailyMap.get(dateKey) ?? { date: dateKey, byPlatform: {}, byPlatformValue: {}, total: 0 };
     d.byPlatform[platform] = (d.byPlatform[platform] ?? 0) + m.costYen;
+    d.byPlatformValue[platform] = (d.byPlatformValue[platform] ?? 0) + m.conversionValueYen;
     d.total += m.costYen;
     dailyMap.set(dateKey, d);
 

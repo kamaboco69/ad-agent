@@ -125,6 +125,21 @@ export function createMetaProvider(platform: PlatformId): AdProvider {
       };
     },
 
+    // アクセス可能な広告アカウントを列挙（UIの「アカウント追加」で使用）
+    async listAccounts(conn) {
+      const token = requireToken(conn);
+      const accounts = await graphGet<{ data?: { id: string; name: string; account_id: string }[] }>(
+        "/me/adaccounts",
+        { fields: "name,account_id", limit: "50" },
+        token
+      );
+      return (accounts.data ?? []).map((a) => ({
+        id: a.id,
+        loginCustomerId: null,
+        name: `${a.name}（${a.account_id}）`,
+      }));
+    },
+
     async sync(conn, days): Promise<SyncResult> {
       const token = requireToken(conn);
       const actId = conn.externalAccountId;

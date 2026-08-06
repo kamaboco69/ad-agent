@@ -1179,23 +1179,23 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               目標{c.targetCpaYen ? ` ¥${c.targetCpaYen.toLocaleString()}` : c.targetRoas ? ` ${c.targetRoas}%` : "未設定"}
                             </button>
                           )}
+                          {["google", "meta", "instagram"].includes(p.id) && c.mode === "api" && (
+                            <button
+                              onClick={() => setPickerConn(c)}
+                              className="text-gray-400 hover:text-white"
+                              title="アクセス可能な広告アカウントをチェックして追加接続"
+                            >
+                              アカウント追加
+                            </button>
+                          )}
                           {p.id === "google" && c.mode === "api" && (
-                            <>
-                              <button
-                                onClick={() => setPickerConn(c)}
-                                className="text-gray-400 hover:text-white"
-                                title="MCC配下のアカウントをチェックして追加接続"
-                              >
-                                アカウント追加
-                              </button>
-                              <button
-                                onClick={() => setOpsConn(c)}
-                                className="text-sky-400/80 hover:text-sky-300"
-                                title="検索語句のAI除外提案・計測ヘルス・学習期間チェック"
-                              >
-                                運用チェック
-                              </button>
-                            </>
+                            <button
+                              onClick={() => setOpsConn(c)}
+                              className="text-sky-400/80 hover:text-sky-300"
+                              title="検索語句のAI除外提案・計測ヘルス・学習期間チェック"
+                            >
+                              運用チェック
+                            </button>
                           )}
                           <button
                             onClick={() => disconnect(c.id, p.label)}

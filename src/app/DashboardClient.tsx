@@ -296,7 +296,7 @@ function TrendChart({
 
       {h && (
         <div
-          className="absolute top-2 pointer-events-none bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs shadow-xl z-10"
+          className="absolute top-2 pointer-events-none bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs shadow-xl z-10"
           style={hover! < n / 2 ? { left: `${(xAt(hover!) / CW) * 100}%`, marginLeft: 12 } : { right: `${100 - (xAt(hover!) / CW) * 100}%`, marginRight: 12 }}
         >
           <div className="text-gray-600 mb-1">{h.date}（計 {yen(h.total)}）</div>
@@ -393,7 +393,7 @@ function AccountPickerModal({
   return (
     <div className="fixed inset-0 z-50 bg-gray-100/50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-white border border-gray-200 rounded-xl p-5 my-auto"
+        className="w-full max-w-md bg-white border border-gray-200 rounded-xl shadow-sm p-5 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-3">
@@ -669,7 +669,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
   return (
     <div className="fixed inset-0 z-50 bg-gray-100/50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
       <div
-        className="w-full max-w-3xl bg-white border border-gray-200 rounded-xl p-5 my-auto"
+        className="w-full max-w-3xl bg-white border border-gray-200 rounded-xl shadow-sm p-5 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-4">
@@ -900,7 +900,7 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
             className={clsx(
               "w-full flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 transition-colors text-left",
               active === item.id
-                ? "bg-gray-200 text-gray-900"
+                ? "bg-sky-100 text-sky-900"
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             )}
           >
@@ -1134,7 +1134,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               onClick={() => router.push(d === 30 ? "/" : `/?days=${d}`)}
               className={clsx(
                 "px-3 py-1.5 transition-colors",
-                data.days === d ? "bg-gray-200 text-gray-900" : "text-gray-600 hover:text-gray-900"
+                data.days === d ? "bg-sky-700 text-white" : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
               )}
             >
               {d}日
@@ -1154,7 +1154,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <button
           onClick={() => setShowConnect((v) => !v)}
-          className="flex items-center gap-1.5 text-sm bg-gray-50 hover:bg-gray-200 border border-gray-200 text-gray-800 px-3 py-1.5 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 text-sm bg-white hover:bg-gray-100 border border-gray-300 text-gray-800 px-3 py-1.5 rounded-lg transition-colors"
         >
           <Plug size={15} />
           媒体接続
@@ -1201,7 +1201,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* 接続パネル（トグル or 未接続時は常時） */}
       {(showConnect || !hasConnections) && (
-        <section id="sec-connect" className="scroll-mt-6 mb-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+        <section id="sec-connect" className="scroll-mt-6 mb-6 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
           <h2 className="text-gray-900 font-semibold mb-1 flex items-center gap-2">
             <Plug size={16} className="text-sky-700" />
             広告媒体の接続
@@ -1393,7 +1393,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           {/* KPI カード */}
           <section id="sec-kpi" className="scroll-mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             {kpis.map((k) => (
-              <div key={k.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <div key={k.label} className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3">
                 <p className="text-[11px] text-gray-500">{k.label}</p>
                 <p className="text-lg font-bold text-gray-900 tabular-nums leading-snug">{k.value}</p>
                 {k.sub && <p className="text-[10px] text-gray-600 mt-0.5">{k.sub}</p>}
@@ -1404,7 +1404,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6 min-w-0">
               {/* トレンド */}
-              <section className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+              <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
                 <h2 className="text-gray-900 font-semibold mb-3 flex items-center gap-2">
                   <BarChart3 size={16} className="text-sky-700" />
                   日別消化額（媒体別）
@@ -1413,7 +1413,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </section>
 
               {/* 媒体別テーブル */}
-              <section id="sec-platforms" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+              <section id="sec-platforms" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
                 <h2 className="text-gray-900 font-semibold mb-3">媒体別パフォーマンス</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm whitespace-nowrap">
@@ -1459,7 +1459,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </section>
 
               {/* キャンペーンテーブル */}
-              <section id="sec-campaigns" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+              <section id="sec-campaigns" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
                 <h2 className="text-gray-900 font-semibold mb-1">キャンペーン</h2>
                 <p className="text-[11px] text-gray-600 mb-3">
                   配信/停止の切替と日予算の変更ができます（API接続時は媒体へ即時反映）
@@ -1536,7 +1536,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
             {/* 右カラム: AI インサイト */}
             <div className="space-y-4 min-w-0">
-              <section id="sec-insights" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+              <section id="sec-insights" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl shadow-sm p-4 sm:p-5">
                 <div className="flex items-center gap-2 mb-3">
                   <h2 className="text-gray-900 font-semibold flex items-center gap-2">
                     <Sparkles size={16} className="text-cyan-400" />

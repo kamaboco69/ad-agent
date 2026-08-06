@@ -933,6 +933,26 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
   const syncConnection = (id: string) => call(`sync-${id}`, () => fetch(`/api/connections/${id}/sync`, { method: "POST" }));
 
+  // 全接続を一括同期（接続数×数秒かかる）
+  const syncAll = async () => {
+    setBusy("sync-all");
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as { ok?: number; failed?: number; error?: string };
+      if (!res.ok) {
+        setBanner({ kind: "error", text: json.error ?? "同期に失敗しました" });
+      } else {
+        setBanner({
+          kind: "ok",
+          text: `全媒体を同期しました（成功${json.ok ?? 0}件${json.failed ? `・失敗${json.failed}件` : ""}）`,
+        });
+        router.refresh();
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const disconnect = (id: string, label: string) => {
     if (!confirm(`${label} の接続を解除しますか？（取得済みの実績データも削除されます）`)) return;
     call(`del-${id}`, () => fetch(`/api/connections/${id}`, { method: "DELETE" }));
@@ -1053,6 +1073,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             </button>
           ))}
         </div>
+
+        <button
+          onClick={syncAll}
+          disabled={busy === "sync-all"}
+          className="flex items-center gap-1.5 text-sm bg-sky-800 hover:bg-sky-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg transition-colors"
+          title="全接続の実績をまとめて同期（接続数×数秒）"
+        >
+          <RefreshCw size={15} className={busy === "sync-all" ? "animate-spin" : ""} />
+          {busy === "sync-all" ? "同期中…" : "全同期"}
+        </button>
 
         <button
           onClick={() => setShowConnect((v) => !v)}

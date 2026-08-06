@@ -40,10 +40,10 @@ interface Finding {
 }
 
 const LEVEL_STYLE: Record<Level, { chip: string; label: string; border: string }> = {
-  crit: { chip: "bg-red-950 text-red-300 border border-red-900", label: "要対応", border: "border-l-red-500" },
-  warn: { chip: "bg-amber-950 text-amber-300 border border-amber-900", label: "注意", border: "border-l-amber-500" },
-  good: { chip: "bg-emerald-950 text-emerald-300 border border-emerald-900", label: "好機", border: "border-l-emerald-500" },
-  info: { chip: "bg-neutral-800 text-gray-400", label: "情報", border: "border-l-neutral-600" },
+  crit: { chip: "bg-red-50 text-red-700 border border-red-300", label: "要対応", border: "border-l-red-500" },
+  warn: { chip: "bg-amber-50 text-amber-700 border border-amber-300", label: "注意", border: "border-l-amber-500" },
+  good: { chip: "bg-emerald-50 text-emerald-700 border border-emerald-300", label: "好機", border: "border-l-emerald-500" },
+  info: { chip: "bg-gray-200 text-gray-600", label: "情報", border: "border-l-neutral-600" },
 };
 
 export default async function AnalysisPage() {
@@ -281,12 +281,12 @@ export default async function AnalysisPage() {
 
   // ── 表示 ────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-black text-gray-100">
+    <div className="min-h-screen bg-gray-100 text-gray-900">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
         <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-xl font-bold text-white">診断分析</h1>
+          <h1 className="text-xl font-bold text-gray-900">診断分析</h1>
           <span className="text-xs text-gray-500">直近30日 vs その前30日 ・ 手順書の閾値で自動判定</span>
-          <a href="/" className="ml-auto text-sm text-gray-400 hover:text-white">← ダッシュボード</a>
+          <a href="/" className="ml-auto text-sm text-gray-600 hover:text-gray-900">← ダッシュボード</a>
         </div>
         <p className="text-xs text-gray-500 mb-6">
           見方: 結果（目標対比）→ 分解（CPA=CPC÷CVR で犯人特定）→ 機会（語句）→ 規律（学習期間・データ量）
@@ -301,25 +301,25 @@ export default async function AnalysisPage() {
         </div>
 
         {findings.length === 0 ? (
-          <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-8 text-center text-gray-500 text-sm">
+          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-500 text-sm">
             診断対象のデータがまだありません。媒体を接続して実績が貯まると、ここに診断結果と提案が表示されます。
           </div>
         ) : (
           <div className="space-y-3">
             {findings.map((f, i) => (
-              <div key={i} className={`bg-neutral-950 border border-neutral-800 border-l-4 ${LEVEL_STYLE[f.level].border} rounded-lg p-4`}>
+              <div key={i} className={`bg-white border border-gray-200 border-l-4 ${LEVEL_STYLE[f.level].border} rounded-lg p-4`}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${LEVEL_STYLE[f.level].chip}`}>
                     {LEVEL_STYLE[f.level].label}
                   </span>
-                  <h2 className="text-sm font-semibold text-white">{f.title}</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">{f.title}</h2>
                 </div>
-                <p className="text-xs text-gray-400 leading-relaxed">
+                <p className="text-xs text-gray-600 leading-relaxed">
                   <span className="text-gray-600">データ: </span>
                   {f.evidence}
                 </p>
-                <p className="text-xs text-sky-300 leading-relaxed mt-1">
-                  <span className="text-sky-600">提案: </span>
+                <p className="text-xs text-sky-700 leading-relaxed mt-1">
+                  <span className="text-sky-700">提案: </span>
                   {f.action}
                 </p>
               </div>

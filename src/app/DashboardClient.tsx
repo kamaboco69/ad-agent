@@ -117,7 +117,7 @@ function InlineBold({ text }: { text: string }) {
   const parts = text.split("**");
   return (
     <>
-      {parts.map((p, i) => (i % 2 === 1 ? <strong key={i} className="text-white font-semibold">{p}</strong> : p))}
+      {parts.map((p, i) => (i % 2 === 1 ? <strong key={i} className="text-gray-900 font-semibold">{p}</strong> : p))}
     </>
   );
 }
@@ -125,12 +125,12 @@ function InlineBold({ text }: { text: string }) {
 function Markdown({ text }: { text: string }) {
   const lines = text.split("\n");
   return (
-    <div className="space-y-1.5 text-sm leading-relaxed text-gray-300">
+    <div className="space-y-1.5 text-sm leading-relaxed text-gray-700">
       {lines.map((line, i) => {
         const t = line.trim();
         if (!t) return <div key={i} className="h-1" />;
-        if (t.startsWith("### ")) return <h4 key={i} className="text-white font-semibold pt-1"><InlineBold text={t.slice(4)} /></h4>;
-        if (t.startsWith("## ")) return <h3 key={i} className="text-white font-bold pt-2"><InlineBold text={t.slice(3)} /></h3>;
+        if (t.startsWith("### ")) return <h4 key={i} className="text-gray-900 font-semibold pt-1"><InlineBold text={t.slice(4)} /></h4>;
+        if (t.startsWith("## ")) return <h3 key={i} className="text-gray-900 font-bold pt-2"><InlineBold text={t.slice(3)} /></h3>;
         if (t.startsWith("- ")) {
           return (
             <div key={i} className="flex gap-2 pl-1">
@@ -204,13 +204,13 @@ function TrendChart({
       <svg viewBox={`0 0 ${CW} ${CH}`} className="w-full h-auto block" role="img" aria-label="日別消化額の推移">
         {gridYs.map((g, i) => (
           <g key={i}>
-            <line x1={PAD.l} x2={CW - PAD.r} y1={g.y} y2={g.y} stroke="#27272a" strokeWidth={1} />
+            <line x1={PAD.l} x2={CW - PAD.r} y1={g.y} y2={g.y} stroke="#e5e7eb" strokeWidth={1} />
             <text x={PAD.l - 6} y={g.y + 3} textAnchor="end" fontSize={10} fill="#71717a">
               {yenAxis(g.v)}
             </text>
           </g>
         ))}
-        <line x1={PAD.l} x2={CW - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} stroke="#3f3f46" strokeWidth={1} />
+        <line x1={PAD.l} x2={CW - PAD.r} y1={PAD.t + plotH} y2={PAD.t + plotH} stroke="#d1d5db" strokeWidth={1} />
         {daily.map((d, i) =>
           i % xTickEvery === 0 ? (
             <text key={d.date} x={xAt(i)} y={CH - 6} textAnchor="middle" fontSize={10} fill="#71717a">
@@ -219,7 +219,7 @@ function TrendChart({
           ) : null
         )}
         {hover !== null && (
-          <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD.t} y2={PAD.t + plotH} stroke="#52525b" strokeWidth={1} strokeDasharray="3 3" />
+          <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD.t} y2={PAD.t + plotH} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
         )}
         {activePlatforms.map((p) => {
           const dPath = daily
@@ -235,7 +235,7 @@ function TrendChart({
               cy={yAt(daily[hover].byPlatform[p.id] ?? 0)}
               r={4}
               fill={p.color}
-              stroke="#0a0a0a"
+              stroke="#ffffff"
               strokeWidth={2}
             />
           ))}
@@ -243,17 +243,17 @@ function TrendChart({
 
       {h && (
         <div
-          className="absolute top-2 pointer-events-none bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-xs shadow-xl z-10"
+          className="absolute top-2 pointer-events-none bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs shadow-xl z-10"
           style={hover! < n / 2 ? { left: `${(xAt(hover!) / CW) * 100}%`, marginLeft: 12 } : { right: `${100 - (xAt(hover!) / CW) * 100}%`, marginRight: 12 }}
         >
-          <div className="text-gray-400 mb-1">{h.date}（計 {yen(h.total)}）</div>
+          <div className="text-gray-600 mb-1">{h.date}（計 {yen(h.total)}）</div>
           {activePlatforms
             .map((p) => ({ p, v: h.byPlatform[p.id] ?? 0 }))
             .sort((a, b) => b.v - a.v)
             .map(({ p, v }) => (
-              <div key={p.id} className="flex items-center gap-1.5 text-gray-200">
+              <div key={p.id} className="flex items-center gap-1.5 text-gray-800">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
-                <span className="text-gray-400">{p.short}</span>
+                <span className="text-gray-600">{p.short}</span>
                 <span className="ml-auto pl-3 tabular-nums">{yen(v)}</span>
               </div>
             ))}
@@ -262,7 +262,7 @@ function TrendChart({
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 px-1">
         {activePlatforms.map((p) => (
-          <span key={p.id} className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+          <span key={p.id} className="inline-flex items-center gap-1.5 text-xs text-gray-600">
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
             {p.label}
           </span>
@@ -323,19 +323,19 @@ function AccountPickerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-gray-100/50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
       <div
-        className="w-full max-w-md bg-neutral-950 border border-neutral-800 rounded-xl p-5 my-auto"
+        className="w-full max-w-md bg-white border border-gray-200 rounded-xl p-5 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-3">
-          <Plug size={15} className="text-sky-400" />
-          <h3 className="text-white font-semibold text-sm">アカウントを追加接続</h3>
-          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+          <Plug size={15} className="text-sky-700" />
+          <h3 className="text-gray-900 font-semibold text-sm">アカウントを追加接続</h3>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-gray-900">
             <XIcon size={16} />
           </button>
         </div>
-        {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
+        {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
         {!accounts ? (
           <p className="text-xs text-gray-600 flex items-center gap-1.5">
             <Loader2 size={12} className="animate-spin" />
@@ -347,7 +347,7 @@ function AccountPickerModal({
               {accounts.map((a) => (
                 <label
                   key={a.id}
-                  className="flex items-center gap-2.5 text-sm text-gray-200 rounded-lg px-2 py-1.5 hover:bg-neutral-900 cursor-pointer"
+                  className="flex items-center gap-2.5 text-sm text-gray-800 rounded-lg px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                 >
                   <input
                     type="checkbox"
@@ -555,16 +555,16 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
 
   const verdictBadge = (t: SearchTermView) => {
     if (t.status === "excluded")
-      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-gray-500">除外済み</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-500">除外済み</span>;
     if (t.status === "promoted")
-      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">昇格済み</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">昇格済み</span>;
     if (t.aiVerdict === "exclude")
-      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-900">除外推奨</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-300">除外推奨</span>;
     if (t.aiVerdict === "promote")
-      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-900">昇格候補</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-300">昇格候補</span>;
     if (t.aiVerdict === "keep")
-      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-gray-400">継続</span>;
-    return <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-900 text-gray-600">未分類</span>;
+      return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-600">継続</span>;
+    return <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-600">未分類</span>;
   };
 
   const healthIssues: string[] = [];
@@ -599,66 +599,66 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-gray-100/50 flex items-start justify-center overflow-y-auto p-4 sm:p-8" onClick={onClose}>
       <div
-        className="w-full max-w-3xl bg-neutral-950 border border-neutral-800 rounded-xl p-5 my-auto"
+        className="w-full max-w-3xl bg-white border border-gray-200 rounded-xl p-5 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles size={16} className="text-sky-400" />
-          <h3 className="text-white font-semibold text-sm">運用チェック — {conn.accountName}</h3>
-          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-white">
+          <Sparkles size={16} className="text-sky-700" />
+          <h3 className="text-gray-900 font-semibold text-sm">運用チェック — {conn.accountName}</h3>
+          <button onClick={onClose} className="ml-auto text-gray-500 hover:text-gray-900">
             <XIcon size={16} />
           </button>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 mb-3 text-xs bg-red-950/60 border border-red-900 text-red-300">
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2 mb-3 text-xs bg-red-50 border border-red-300 text-red-700">
             <AlertTriangle size={13} className="shrink-0" />
             {error}
           </div>
         )}
         {notice && (
-          <div className="rounded-lg px-3 py-2 mb-3 text-xs bg-emerald-950/60 border border-emerald-800 text-emerald-300">
+          <div className="rounded-lg px-3 py-2 mb-3 text-xs bg-emerald-50 border border-emerald-300 text-emerald-700">
             {notice}
           </div>
         )}
 
         {/* 学習期間ガード */}
         <div className="mb-4">
-          <h4 className="text-xs font-semibold text-gray-400 mb-1.5">学習期間ガード（直近7日の設定変更）</h4>
+          <h4 className="text-xs font-semibold text-gray-600 mb-1.5">学習期間ガード（直近7日の設定変更）</h4>
           {changes === null && !healthError ? (
             <p className="text-xs text-gray-600 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />確認中…</p>
           ) : healthError ? (
-            <p className="text-xs text-red-400/80">{healthError}</p>
+            <p className="text-xs text-red-600">{healthError}</p>
           ) : changes && changes.length > 0 ? (
-            <div className="rounded-lg px-3 py-2 text-xs bg-amber-950/40 border border-amber-900/60 text-amber-200">
+            <div className="rounded-lg px-3 py-2 text-xs bg-amber-50 border border-amber-300 text-amber-800">
               直近7日間に <strong>{changes.length}件</strong> の設定変更があります。自動入札の学習期間中の可能性が高いため、
               追加の変更（予算・入札・ステータス）は学習をリセットする恐れがあります。
-              <ul className="mt-1.5 space-y-0.5 text-amber-200/70">
+              <ul className="mt-1.5 space-y-0.5 text-amber-700">
                 {changes.slice(0, 5).map((c, i) => (
                   <li key={i}>・{c.at.slice(0, 16)} {c.resourceType} {c.operation}</li>
                 ))}
               </ul>
             </div>
           ) : (
-            <p className="text-xs text-emerald-400/80">直近7日間の設定変更はありません。学習は安定していると考えられます。</p>
+            <p className="text-xs text-emerald-700">直近7日間の設定変更はありません。学習は安定していると考えられます。</p>
           )}
         </div>
 
         {/* 計測ヘルスチェック */}
         <div className="mb-4">
-          <h4 className="text-xs font-semibold text-gray-400 mb-1.5">計測ヘルスチェック</h4>
+          <h4 className="text-xs font-semibold text-gray-600 mb-1.5">計測ヘルスチェック</h4>
           {!health && !healthError ? (
             <p className="text-xs text-gray-600 flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />確認中…</p>
           ) : health ? (
             <div className="text-xs space-y-1.5">
               {healthIssues.length === 0 ? (
-                <p className="text-emerald-400/80">計測設定に大きな問題は見つかりませんでした。</p>
+                <p className="text-emerald-700">計測設定に大きな問題は見つかりませんでした。</p>
               ) : (
                 <ul className="space-y-1">
                   {healthIssues.map((h, i) => (
-                    <li key={i} className="text-amber-300 flex items-start gap-1.5">
+                    <li key={i} className="text-amber-700 flex items-start gap-1.5">
                       <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                       {h}
                     </li>
@@ -668,10 +668,10 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
               <div className="text-gray-500">
                 有効なCVアクション: {health.actions.length}件
                 {health.actions.slice(0, 6).map((a) => (
-                  <span key={a.name} className="inline-block ml-2 text-gray-400">
+                  <span key={a.name} className="inline-block ml-2 text-gray-600">
                     {a.name}
-                    {a.primary && <span className="text-sky-400">（メイン）</span>}
-                    {a.hasValue ? <span className="text-emerald-500/80">・値あり</span> : null}
+                    {a.primary && <span className="text-sky-700">（メイン）</span>}
+                    {a.hasValue ? <span className="text-emerald-600">・値あり</span> : null}
                   </span>
                 ))}
               </div>
@@ -682,12 +682,12 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
         {/* 検索語句レポート */}
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <h4 className="text-xs font-semibold text-gray-400">検索語句レポート（直近30日・消化額順）</h4>
+            <h4 className="text-xs font-semibold text-gray-600">検索語句レポート（直近30日・消化額順）</h4>
             <div className="ml-auto flex gap-2">
               <button
                 onClick={syncTerms}
                 disabled={busy !== null}
-                className="flex items-center gap-1 text-[11px] bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-gray-200 rounded px-2 py-1"
+                className="flex items-center gap-1 text-[11px] bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-800 rounded px-2 py-1"
               >
                 {busy === "sync" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
                 語句を同期
@@ -715,7 +715,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
             </div>
           </div>
 
-          <label className="flex items-center gap-2 text-[11px] text-gray-400 mb-2 cursor-pointer">
+          <label className="flex items-center gap-2 text-[11px] text-gray-600 mb-2 cursor-pointer">
             <input
               type="checkbox"
               checked={autoExclude}
@@ -724,7 +724,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
             />
             毎週月曜に自動で「同期 → AI分類 → 除外推奨（CV0のみ）の除外登録」まで実行する（結果はAIインサイトに記録）
           </label>
-          <label className="flex items-center gap-2 text-[11px] text-gray-400 mb-2 cursor-pointer">
+          <label className="flex items-center gap-2 text-[11px] text-gray-600 mb-2 cursor-pointer">
             <input
               type="checkbox"
               checked={guardBlock}
@@ -739,9 +739,9 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
               まだ検索語句がありません。「語句を同期」で媒体から取得してください。
             </p>
           ) : (
-            <div className="overflow-x-auto max-h-80 overflow-y-auto border border-neutral-800 rounded-lg">
+            <div className="overflow-x-auto max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
               <table className="w-full text-xs">
-                <thead className="text-gray-500 sticky top-0 bg-neutral-950">
+                <thead className="text-gray-500 sticky top-0 bg-white">
                   <tr className="[&>th]:px-2.5 [&>th]:py-1.5 [&>th]:text-left [&>th]:font-normal">
                     <th>検索語句</th>
                     <th>キャンペーン</th>
@@ -752,11 +752,11 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
                     <th />
                   </tr>
                 </thead>
-                <tbody className="text-gray-300">
+                <tbody className="text-gray-700">
                   {terms.map((t) => (
-                    <tr key={t.id} className="border-t border-neutral-900">
+                    <tr key={t.id} className="border-t border-gray-100">
                       <td className="px-2.5 py-1.5 max-w-[180px]">
-                        <span className="text-gray-200">{t.term}</span>
+                        <span className="text-gray-800">{t.term}</span>
                         {t.aiReason && <p className="text-[10px] text-gray-600">{t.aiReason}</p>}
                       </td>
                       <td className="px-2.5 py-1.5 max-w-[130px] truncate text-gray-500">{t.campaignName}</td>
@@ -769,7 +769,7 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
                           <button
                             onClick={() => promote(t)}
                             disabled={busy !== null}
-                            className="text-[10px] rounded px-1.5 py-0.5 border border-emerald-900 bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/60 disabled:opacity-50 mr-1"
+                            className="text-[10px] rounded px-1.5 py-0.5 border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-900/60 disabled:opacity-50 mr-1"
                             title="完全一致キーワードとして正式登録（手順書§2-A: CV2件以上）"
                           >
                             昇格
@@ -782,8 +782,8 @@ function OpsCheckModal({ conn, onClose }: { conn: ConnectionView; onClose: () =>
                             className={clsx(
                               "text-[10px] rounded px-1.5 py-0.5 border disabled:opacity-50",
                               t.aiVerdict === "exclude"
-                                ? "border-red-900 bg-red-950/60 text-red-300 hover:bg-red-900/60"
-                                : "border-neutral-700 text-gray-400 hover:text-white"
+                                ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                                : "border-gray-300 text-gray-600 hover:text-gray-900"
                             )}
                           >
                             除外
@@ -814,13 +814,13 @@ const NAV_ITEMS: { id: string; label: string; icon: typeof Plug }[] = [
 
 function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: string) => void }) {
   return (
-    <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-neutral-950 border-r border-neutral-800 p-4 z-40">
+    <aside className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-56 bg-white border-r border-gray-200 p-4 z-40">
       <div className="flex items-center gap-2.5 mb-6 px-1">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-sky-600 via-cyan-500 to-emerald-400 flex items-center justify-center text-white font-black text-xs">
           AD
         </div>
         <div>
-          <p className="text-white font-bold text-sm leading-tight">Ad Agent</p>
+          <p className="text-gray-900 font-bold text-sm leading-tight">Ad Agent</p>
           <p className="text-[10px] text-gray-500 leading-tight">統合ダッシュボード</p>
         </div>
       </div>
@@ -832,8 +832,8 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
             className={clsx(
               "w-full flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 transition-colors text-left",
               active === item.id
-                ? "bg-neutral-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-neutral-900"
+                ? "bg-gray-200 text-gray-900"
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
             )}
           >
             <item.icon size={15} className="shrink-0" />
@@ -843,7 +843,7 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
       </nav>
       <a
         href="/analysis"
-        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-300 hover:bg-neutral-900 border border-neutral-800"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"
         title="結果→分解→機会→規律のプロ視点で自動診断し、データ根拠つきの提案を表示"
       >
         <BarChart3 size={15} />
@@ -851,7 +851,7 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
       </a>
       <a
         href="/report"
-        className="mt-2 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 bg-sky-900/40 text-sky-300 hover:bg-sky-900/70 border border-sky-900"
+        className="mt-2 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-300"
         title="クライアント提出用レポート（プレビュー→PDF保存）"
       >
         <FileText size={15} />
@@ -859,7 +859,7 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
       </a>
       <button
         onClick={() => signOut({ callbackUrl: "/login" })}
-        className="mt-auto flex items-center gap-2.5 text-sm text-gray-500 hover:text-gray-300 px-3 py-2"
+        className="mt-auto flex items-center gap-2.5 text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
       >
         <LogOut size={15} />
         ログアウト
@@ -1054,19 +1054,19 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             AD
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white leading-tight">Ad Agent</h1>
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">Ad Agent</h1>
             <p className="text-[11px] text-gray-500 leading-tight">広告媒体 統合ダッシュボード</p>
           </div>
         </div>
 
-        <div className="flex rounded-lg border border-neutral-800 overflow-hidden text-sm">
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
           {[7, 30, 90].map((d) => (
             <button
               key={d}
               onClick={() => router.push(d === 30 ? "/" : `/?days=${d}`)}
               className={clsx(
                 "px-3 py-1.5 transition-colors",
-                data.days === d ? "bg-neutral-800 text-white" : "text-gray-400 hover:text-white"
+                data.days === d ? "bg-gray-200 text-gray-900" : "text-gray-600 hover:text-gray-900"
               )}
             >
               {d}日
@@ -1086,7 +1086,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <button
           onClick={() => setShowConnect((v) => !v)}
-          className="flex items-center gap-1.5 text-sm bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+          className="flex items-center gap-1.5 text-sm bg-gray-50 hover:bg-gray-200 border border-gray-200 text-gray-800 px-3 py-1.5 rounded-lg transition-colors"
         >
           <Plug size={15} />
           媒体接続
@@ -1094,7 +1094,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-gray-500 hover:text-gray-300 p-1.5"
+          className="text-gray-500 hover:text-gray-700 p-1.5"
           title="ログアウト"
         >
           <LogOut size={16} />
@@ -1106,8 +1106,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           className={clsx(
             "flex items-center gap-2 rounded-lg px-4 py-2.5 mb-4 text-sm",
             banner.kind === "ok"
-              ? "bg-emerald-950/60 border border-emerald-800 text-emerald-300"
-              : "bg-red-950/60 border border-red-900 text-red-300"
+              ? "bg-emerald-50 border border-emerald-300 text-emerald-700"
+              : "bg-red-50 border border-red-300 text-red-700"
           )}
         >
           {banner.kind === "error" && <AlertTriangle size={15} className="shrink-0" />}
@@ -1133,9 +1133,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* 接続パネル（トグル or 未接続時は常時） */}
       {(showConnect || !hasConnections) && (
-        <section id="sec-connect" className="scroll-mt-6 mb-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
-          <h2 className="text-white font-semibold mb-1 flex items-center gap-2">
-            <Plug size={16} className="text-sky-400" />
+        <section id="sec-connect" className="scroll-mt-6 mb-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+          <h2 className="text-gray-900 font-semibold mb-1 flex items-center gap-2">
+            <Plug size={16} className="text-sky-700" />
             広告媒体の接続
           </h2>
           <p className="text-xs text-gray-500 mb-4">
@@ -1143,10 +1143,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {data.platforms.map((p) => (
-              <div key={p.id} className="border border-neutral-800 rounded-lg p-3.5 bg-black/40">
+              <div key={p.id} className="border border-gray-200 rounded-lg p-3.5 bg-gray-50">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
-                  <span className="text-sm font-medium text-white">{p.label}</span>
+                  <span className="text-sm font-medium text-gray-900">{p.label}</span>
                   <span className="ml-auto text-[10px] text-gray-600">{p.apiName}</span>
                 </div>
 
@@ -1155,7 +1155,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <button
                       onClick={() => connectDemo(p.id)}
                       disabled={busy === `demo-${p.id}`}
-                      className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-gray-200 rounded-md py-1.5 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-800 rounded-md py-1.5 transition-colors"
                     >
                       {busy === `demo-${p.id}` ? <Loader2 size={12} className="animate-spin" /> : null}
                       デモ接続
@@ -1168,7 +1168,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         API接続
                       </a>
                     ) : (
-                      <span className="flex-1 flex items-center justify-center text-[10px] text-gray-600 border border-neutral-800 rounded-md py-1.5" title={p.note ?? undefined}>
+                      <span className="flex-1 flex items-center justify-center text-[10px] text-gray-600 border border-gray-200 rounded-md py-1.5" title={p.note ?? undefined}>
                         API未設定
                       </span>
                     )}
@@ -1184,26 +1184,26 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               c.status === "connected" ? "bg-emerald-400" : "bg-red-400"
                             )}
                           />
-                          <span className="text-gray-300 truncate">{c.accountName}</span>
+                          <span className="text-gray-700 truncate">{c.accountName}</span>
                           <span className="text-[10px] text-gray-600 shrink-0">{c.mode === "demo" ? "デモ" : "API"}</span>
                         </div>
-                        {c.lastError && <p className="text-red-400/80 text-[10px] mt-0.5 line-clamp-2">{c.lastError}</p>}
+                        {c.lastError && <p className="text-red-600 text-[10px] mt-0.5 line-clamp-2">{c.lastError}</p>}
                         <div className="flex items-center gap-2 mt-1.5 text-[11px]">
                           <button
                             onClick={() => syncConnection(c.id)}
                             disabled={busy === `sync-${c.id}`}
-                            className="flex items-center gap-1 text-gray-400 hover:text-white disabled:opacity-50"
+                            className="flex items-center gap-1 text-gray-600 hover:text-gray-900 disabled:opacity-50"
                           >
                             <RefreshCw size={11} className={busy === `sync-${c.id}` ? "animate-spin" : ""} />
                             同期
                           </button>
-                          <button onClick={() => setMonthlyBudget(c, p.label)} className="text-gray-400 hover:text-white">
+                          <button onClick={() => setMonthlyBudget(c, p.label)} className="text-gray-600 hover:text-gray-900">
                             月予算{c.monthlyBudgetYen ? ` ${yen(c.monthlyBudgetYen)}` : "未設定"}
                           </button>
                           {c.mode === "api" && (
                             <button
                               onClick={() => setTargets(c, p.label)}
-                              className="text-gray-400 hover:text-white"
+                              className="text-gray-600 hover:text-gray-900"
                               title="目標CPA/ROAS（日次チェック・月次レビューの判定基準）"
                             >
                               目標{c.targetCpaYen ? ` ¥${c.targetCpaYen.toLocaleString()}` : c.targetRoas ? ` ${c.targetRoas}%` : "未設定"}
@@ -1212,7 +1212,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           {["google", "meta", "instagram"].includes(p.id) && c.mode === "api" && (
                             <button
                               onClick={() => setPickerConn(c)}
-                              className="text-gray-400 hover:text-white"
+                              className="text-gray-600 hover:text-gray-900"
                               title="アクセス可能な広告アカウントをチェックして追加接続"
                             >
                               アカウント追加
@@ -1221,7 +1221,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           {p.id === "google" && c.mode === "api" && (
                             <button
                               onClick={() => setOpsConn(c)}
-                              className="text-sky-400/80 hover:text-sky-300"
+                              className="text-sky-700 hover:text-sky-700"
                               title="検索語句のAI除外提案・計測ヘルス・学習期間チェック"
                             >
                               運用チェック
@@ -1229,7 +1229,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           )}
                           <button
                             onClick={() => disconnect(c.id, p.label)}
-                            className="ml-auto text-gray-600 hover:text-red-400"
+                            className="ml-auto text-gray-600 hover:text-red-600"
                             title="接続解除"
                           >
                             <Trash2 size={12} />
@@ -1244,7 +1244,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
 
           {/* 分析サービス連携（GA4 / Search Console。ワンタッチOAuth） */}
-          <h3 className="text-sm font-medium text-white mt-5 mb-2">分析サービス連携</h3>
+          <h3 className="text-sm font-medium text-gray-900 mt-5 mb-2">分析サービス連携</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[
               { id: "ga4", label: "Google アナリティクス（GA4）", api: "GA4 Data API" },
@@ -1252,15 +1252,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             ].map((s) => {
               const integ = data.integrations.find((i) => i.service === s.id);
               return (
-                <div key={s.id} className="border border-neutral-800 rounded-lg p-3.5 bg-black/40">
+                <div key={s.id} className="border border-gray-200 rounded-lg p-3.5 bg-gray-50">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={clsx("w-2.5 h-2.5 rounded-full", integ ? "bg-emerald-400" : "bg-neutral-700")} />
-                    <span className="text-sm font-medium text-white">{s.label}</span>
+                    <span className={clsx("w-2.5 h-2.5 rounded-full", integ ? "bg-emerald-400" : "bg-gray-300")} />
+                    <span className="text-sm font-medium text-gray-900">{s.label}</span>
                     <span className="ml-auto text-[10px] text-gray-600">{s.api}</span>
                   </div>
                   {integ ? (
                     <div className="flex items-center gap-2 text-xs">
-                      <span className="text-gray-300 truncate">{integ.accountName}</span>
+                      <span className="text-gray-700 truncate">{integ.accountName}</span>
                       <button
                         onClick={async () => {
                           const res = await fetch(`/api/integrations/${s.id}`, {
@@ -1290,7 +1290,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             })
                           );
                         }}
-                        className="text-gray-400 hover:text-white shrink-0"
+                        className="text-gray-600 hover:text-gray-900 shrink-0"
                       >
                         対象変更
                       </button>
@@ -1299,7 +1299,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           if (!confirm(`${s.label} の連携を解除しますか？`)) return;
                           call(`integ-${s.id}`, () => fetch(`/api/integrations/${s.id}`, { method: "DELETE" }));
                         }}
-                        className="ml-auto text-gray-600 hover:text-red-400 shrink-0"
+                        className="ml-auto text-gray-600 hover:text-red-600 shrink-0"
                         title="連携解除"
                       >
                         <Trash2 size={12} />
@@ -1325,9 +1325,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           {/* KPI カード */}
           <section id="sec-kpi" className="scroll-mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
             {kpis.map((k) => (
-              <div key={k.label} className="bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-3">
+              <div key={k.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3">
                 <p className="text-[11px] text-gray-500">{k.label}</p>
-                <p className="text-lg font-bold text-white tabular-nums leading-snug">{k.value}</p>
+                <p className="text-lg font-bold text-gray-900 tabular-nums leading-snug">{k.value}</p>
                 {k.sub && <p className="text-[10px] text-gray-600 mt-0.5">{k.sub}</p>}
               </div>
             ))}
@@ -1336,21 +1336,21 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div className="xl:col-span-2 space-y-6 min-w-0">
               {/* トレンド */}
-              <section className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
-                <h2 className="text-white font-semibold mb-3 flex items-center gap-2">
-                  <BarChart3 size={16} className="text-sky-400" />
+              <section className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+                <h2 className="text-gray-900 font-semibold mb-3 flex items-center gap-2">
+                  <BarChart3 size={16} className="text-sky-700" />
                   日別消化額（媒体別）
                 </h2>
                 <TrendChart daily={data.daily} platforms={data.platforms} />
               </section>
 
               {/* 媒体別テーブル */}
-              <section id="sec-platforms" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
-                <h2 className="text-white font-semibold mb-3">媒体別パフォーマンス</h2>
+              <section id="sec-platforms" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+                <h2 className="text-gray-900 font-semibold mb-3">媒体別パフォーマンス</h2>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm whitespace-nowrap">
                     <thead>
-                      <tr className="text-[11px] text-gray-500 border-b border-neutral-800">
+                      <tr className="text-[11px] text-gray-500 border-b border-gray-200">
                         <th className="text-left font-normal py-2 pr-3">媒体</th>
                         <th className="text-right font-normal py-2 px-3">消化額</th>
                         <th className="text-right font-normal py-2 px-3">IMP</th>
@@ -1367,21 +1367,21 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         const p = platformOf.get(row.platform);
                         const d = kpiDerived(row);
                         return (
-                          <tr key={row.platform} className="border-b border-neutral-900 last:border-0">
+                          <tr key={row.platform} className="border-b border-gray-100 last:border-0">
                             <td className="py-2.5 pr-3">
-                              <span className="inline-flex items-center gap-2 text-gray-200">
+                              <span className="inline-flex items-center gap-2 text-gray-800">
                                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p?.color }} />
                                 {p?.label ?? row.platform}
                               </span>
                             </td>
-                            <td className="text-right px-3 tabular-nums text-gray-200">{yen(row.costYen)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{num(row.impressions)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{num(row.clicks)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{pct(d.ctr)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{yen(d.cpc)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-200">{row.conversions.toFixed(1)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-200">{d.cpa ? yen(d.cpa) : "—"}</td>
-                            <td className="text-right pl-3 tabular-nums text-gray-200">{Math.round(d.roas * 100)}%</td>
+                            <td className="text-right px-3 tabular-nums text-gray-800">{yen(row.costYen)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{num(row.impressions)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{num(row.clicks)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{pct(d.ctr)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{yen(d.cpc)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-800">{row.conversions.toFixed(1)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-800">{d.cpa ? yen(d.cpa) : "—"}</td>
+                            <td className="text-right pl-3 tabular-nums text-gray-800">{Math.round(d.roas * 100)}%</td>
                           </tr>
                         );
                       })}
@@ -1391,15 +1391,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </section>
 
               {/* キャンペーンテーブル */}
-              <section id="sec-campaigns" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
-                <h2 className="text-white font-semibold mb-1">キャンペーン</h2>
+              <section id="sec-campaigns" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+                <h2 className="text-gray-900 font-semibold mb-1">キャンペーン</h2>
                 <p className="text-[11px] text-gray-600 mb-3">
                   配信/停止の切替と日予算の変更ができます（API接続時は媒体へ即時反映）
                 </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm whitespace-nowrap">
                     <thead>
-                      <tr className="text-[11px] text-gray-500 border-b border-neutral-800">
+                      <tr className="text-[11px] text-gray-500 border-b border-gray-200">
                         <th className="text-left font-normal py-2 pr-3">キャンペーン</th>
                         <th className="text-center font-normal py-2 px-3">状態</th>
                         <th className="text-right font-normal py-2 px-3">日予算</th>
@@ -1415,11 +1415,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         const d = kpiDerived(c);
                         const toggling = busy === `camp-${c.id}`;
                         return (
-                          <tr key={c.id} className="border-b border-neutral-900 last:border-0">
+                          <tr key={c.id} className="border-b border-gray-100 last:border-0">
                             <td className="py-2.5 pr-3 max-w-[260px]">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p?.color }} />
-                                <span className="text-gray-200 truncate" title={c.name}>{c.name}</span>
+                                <span className="text-gray-800 truncate" title={c.name}>{c.name}</span>
                               </div>
                             </td>
                             <td className="text-center px-3">
@@ -1429,8 +1429,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                                 className={clsx(
                                   "inline-flex items-center gap-1 text-[11px] rounded-full px-2.5 py-1 border transition-colors disabled:opacity-50",
                                   c.status === "active"
-                                    ? "border-emerald-800 bg-emerald-950/50 text-emerald-300 hover:bg-emerald-950"
-                                    : "border-neutral-700 bg-neutral-900 text-gray-400 hover:text-gray-200"
+                                    ? "border-emerald-300 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50"
+                                    : "border-gray-300 bg-gray-50 text-gray-600 hover:text-gray-800"
                                 )}
                                 title={c.status === "active" ? "クリックで停止" : "クリックで配信再開"}
                               >
@@ -1447,16 +1447,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             <td className="text-right px-3 tabular-nums">
                               <button
                                 onClick={() => editCampaignBudget(c)}
-                                className="text-gray-300 hover:text-sky-300 hover:underline decoration-dotted underline-offset-2"
+                                className="text-gray-700 hover:text-sky-700 hover:underline decoration-dotted underline-offset-2"
                                 title="クリックで日予算を変更"
                               >
                                 {c.dailyBudgetYen ? yen(c.dailyBudgetYen) : "—"}
                               </button>
                             </td>
-                            <td className="text-right px-3 tabular-nums text-gray-200">{yen(c.costYen)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{c.conversions.toFixed(1)}</td>
-                            <td className="text-right px-3 tabular-nums text-gray-400">{d.cpa ? yen(d.cpa) : "—"}</td>
-                            <td className="text-right pl-3 tabular-nums text-gray-400">{Math.round(d.roas * 100)}%</td>
+                            <td className="text-right px-3 tabular-nums text-gray-800">{yen(c.costYen)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{c.conversions.toFixed(1)}</td>
+                            <td className="text-right px-3 tabular-nums text-gray-600">{d.cpa ? yen(d.cpa) : "—"}</td>
+                            <td className="text-right pl-3 tabular-nums text-gray-600">{Math.round(d.roas * 100)}%</td>
                           </tr>
                         );
                       })}
@@ -1468,16 +1468,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
             {/* 右カラム: AI インサイト */}
             <div className="space-y-4 min-w-0">
-              <section id="sec-insights" className="scroll-mt-6 bg-neutral-950 border border-neutral-800 rounded-xl p-4 sm:p-5">
+              <section id="sec-insights" className="scroll-mt-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-white font-semibold flex items-center gap-2">
+                  <h2 className="text-gray-900 font-semibold flex items-center gap-2">
                     <Sparkles size={16} className="text-cyan-400" />
                     AI インサイト
                   </h2>
                   <button
                     onClick={generateInsight}
                     disabled={busy === "insight" || !data.aiConfigured}
-                    className="ml-auto flex items-center gap-1.5 text-xs bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 text-white rounded-md px-2.5 py-1.5 transition-colors"
+                    className="ml-auto flex items-center gap-1.5 text-xs bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 text-gray-900 rounded-md px-2.5 py-1.5 transition-colors"
                     title={data.aiConfigured ? `直近${data.days}日の実績を分析` : "ANTHROPIC_API_KEY が未設定です"}
                   >
                     {busy === "insight" ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
@@ -1499,7 +1499,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           key={ins.id}
                           className={clsx(
                             "border rounded-lg overflow-hidden",
-                            isAlert ? "border-amber-900/70 bg-amber-950/20" : "border-neutral-800 bg-black/40"
+                            isAlert ? "border-amber-300/70 bg-amber-50/20" : "border-gray-200 bg-gray-50"
                           )}
                         >
                           <button
@@ -1515,7 +1515,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               <FileText size={15} className="text-cyan-400 shrink-0 mt-0.5" />
                             )}
                             <span className="min-w-0 flex-1">
-                              <span className={clsx("block text-sm", ins.status === "new" ? "text-white font-medium" : "text-gray-300")}>
+                              <span className={clsx("block text-sm", ins.status === "new" ? "text-gray-900 font-medium" : "text-gray-700")}>
                                 {ins.title}
                               </span>
                               <span className="block text-[10px] text-gray-600 mt-0.5">
@@ -1525,12 +1525,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             {ins.status === "new" && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 mt-1.5" />}
                           </button>
                           {open && (
-                            <div className="px-4 pb-3.5 border-t border-neutral-800/60 pt-3">
+                            <div className="px-4 pb-3.5 border-t border-gray-200/60 pt-3">
                               <Markdown text={ins.body} />
                               <div className="flex justify-end mt-3">
                                 <button
                                   onClick={() => markInsight(ins.id, "dismissed")}
-                                  className="text-[11px] text-gray-500 hover:text-gray-300"
+                                  className="text-[11px] text-gray-500 hover:text-gray-700"
                                 >
                                   この項目を非表示
                                 </button>

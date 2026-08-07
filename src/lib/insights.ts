@@ -215,6 +215,8 @@ const SYSTEM_PROMPT = `あなたは日本の広告運用コンサルタントで
 - 数値は必ず渡されたデータに基づくこと。推測の数値を作らない。
 - CV価値が0の認知系キャンペーンをCPA/ROASで断罪しない（目的が違う）。
 - 前期比が渡されている場合は、悪化している媒体・指標（CPA上昇、CV減少など）を最優先で改善アクションに反映する。
+- BtoBリードのファネルが渡されている場合は、CPA（リード単価）ではなく商談単価CPOと受注単価CACを主軸に評価する。リード単価が安くても商談化率が低ければ「安く見えて実は高い」と明記し、入札ではなく質（除外KW・ターゲティング・フォーム項目）の改善を提案する。
+- BtoBは検討期間が3〜12ヶ月あるため、当月の広告費と当月の受注を直接割り算しない。獲得月コホートで論じ、データが未成熟な場合はその旨を断ってから述べる。
 - 冗長にしない。全体で600字〜1000字程度。`;
 
 // 指名/非指名の分離集計と目標値を分析データに併記する（手順書§6-A/§10: 指名込みで評価しない）
@@ -281,6 +283,38 @@ async function integrationsText(organizationId: string): Promise<string> {
     : "";
 }
 
+// BtoBリードのファネル指標を併記する（リード未登録なら空文字）
+async function leadFunnelText(organizationId: string, days: number): Promise<string> {
+  const since = new Date(Date.now() - days * 86400_000);
+  const [leads, costAgg, conns] = await Promise.all([
+    prisma.lead.findMany({
+      where: { organizationId, leadAt: { gte: since } },
+      select: { validity: true, stage: true, lost: true, dealAmountYen: true, leadAt: true },
+    }),
+    prisma.dailyMetric.aggregate({ where: { organizationId, date: { gte: since } }, _sum: { costYen: true } }),
+    prisma.adConnection.findMany({
+      where: { organizationId },
+      select: { targetCpoYen: true, targetCacYen: true, avgLtvYen: true },
+    }),
+  ]);
+  if (leads.length === 0) return "";
+
+  const { computeLeadKpi } = await import("@/lib/leads");
+  const ltv = conns.find((c) => c.avgLtvYen)?.avgLtvYen ?? null;
+  const k = computeLeadKpi(leads, costAgg._sum.costYen ?? 0, ltv);
+  const targetCpo = conns.find((c) => c.targetCpoYen)?.targetCpoYen ?? null;
+  const targetCac = conns.find((c) => c.targetCacYen)?.targetCacYen ?? null;
+  const y = (v: number | null) => (v ? `¥${Math.round(v).toLocaleString()}` : "—");
+
+  return (
+    `\n\n【BtoBリードのファネル（直近${days}日・リード獲得日基準）】\n` +
+    `- リード ${k.leads}件 / 有効 ${k.valid}件（有効リード率 ${(k.validRate * 100).toFixed(0)}%）\n` +
+    `- 商談 ${k.meetings}件（商談化率 ${(k.meetingRate * 100).toFixed(0)}%）/ 受注 ${k.wons}件（受注率 ${(k.wonRate * 100).toFixed(0)}%）\n` +
+    `- リード単価 ${y(k.cpl)} / 有効リード単価 ${y(k.cpValidLead)} / 商談単価CPO ${y(k.cpo)} / 受注単価CAC ${y(k.cac)}\n` +
+    `- 目標: CPO ${y(targetCpo)} / CAC ${y(targetCac)}${k.ltvCacRatio ? ` / LTV_CAC ${k.ltvCacRatio.toFixed(1)}倍` : ""}`
+  );
+}
+
 // 直近7日の変更ログを分析データに併記する（手順書§10: 実施アクションの併記）
 async function recentActionsText(organizationId: string): Promise<string> {
   const actions = await prisma.changeLog.findMany({
@@ -331,6 +365,7 @@ export async function generateInsight(organizationId: string, opts: GenerateInsi
           summaryToText(summary) +
           (await contextText(organizationId, days)) +
           (await integrationsText(organizationId)) +
+          (await leadFunnelText(organizationId, days)) +
           (await recentActionsText(organizationId)),
       },
     ],

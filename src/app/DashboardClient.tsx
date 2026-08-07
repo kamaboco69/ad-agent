@@ -15,6 +15,7 @@ import {
   FileText,
   LogOut,
   Pause,
+  Users,
   Play,
 } from "lucide-react";
 import clsx from "clsx";
@@ -909,6 +910,14 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
           </button>
         ))}
       </nav>
+      <a
+        href="/leads"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"
+        title="BtoBリードの有効判定・商談・受注を管理し、CPO/CACを算出"
+      >
+        <Users size={15} />
+        リード管理
+      </a>
       <a
         href="/analysis"
         className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"

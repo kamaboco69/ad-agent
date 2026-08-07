@@ -23,6 +23,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     autoExclude?: boolean;
     targetCpaYen?: number | null;
     targetRoas?: number | null;
+    targetCpoYen?: number | null;
+    targetCacYen?: number | null;
+    avgLtvYen?: number | null;
     learningGuardMode?: string;
   };
 
@@ -61,6 +64,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (typeof body.targetCpaYen === "number" && body.targetCpaYen > 0) data.targetCpaYen = Math.round(body.targetCpaYen);
   if (body.targetRoas === null) data.targetRoas = null;
   if (typeof body.targetRoas === "number" && body.targetRoas > 0) data.targetRoas = Math.round(body.targetRoas);
+  // BtoB の目標値（商談単価・受注単価・想定LTV）
+  for (const key of ["targetCpoYen", "targetCacYen", "avgLtvYen"] as const) {
+    if (body[key] === null) data[key] = null;
+    if (typeof body[key] === "number" && body[key]! > 0) data[key] = Math.round(body[key]!);
+  }
   if (body.learningGuardMode === "warn" || body.learningGuardMode === "block") {
     data.learningGuardMode = body.learningGuardMode;
   }

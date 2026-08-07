@@ -77,6 +77,7 @@ interface SearchRow {
   searchTermView?: { searchTerm?: string };
   smartCampaignSearchTermView?: { searchTerm?: string };
   conversionAction?: {
+    resourceName?: string;
     name?: string;
     category?: string;
     type?: string;
@@ -451,7 +452,7 @@ export function createGoogleProvider(): AdProvider {
       const actions = await gaqlSearch(
         token,
         customerId,
-        `SELECT conversion_action.name, conversion_action.category, conversion_action.type,
+        `SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type,
                 conversion_action.status, conversion_action.primary_for_goal,
                 conversion_action.counting_type, conversion_action.value_settings.default_value,
                 conversion_action.attribution_model_settings.attribution_model
@@ -461,6 +462,7 @@ export function createGoogleProvider(): AdProvider {
       return {
         trackingStatus: cust[0]?.customer?.conversionTrackingSetting?.conversionTrackingStatus ?? "UNKNOWN",
         actions: actions.map((r) => ({
+          resourceName: r.conversionAction?.resourceName ?? "",
           name: r.conversionAction?.name ?? "(不明)",
           category: r.conversionAction?.category ?? "",
           type: r.conversionAction?.type ?? "",

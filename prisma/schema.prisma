@@ -107,6 +107,9 @@ model AdConnection {
   autoExclude       Boolean   @default(false) // 週次でAIの除外推奨（CV0のみ）を自動で媒体に登録する
   targetCpaYen      Int? // 目標CPA（運用ルールエンジンの判定基準）
   targetRoas        Int? // 目標ROAS（%）
+  targetCpoYen      Int? // BtoB: 目標商談単価（CPO）
+  targetCacYen      Int? // BtoB: 目標受注単価（CAC。実質的な限界CPA）
+  avgLtvYen         Int? // BtoB: 想定LTV（LTV/CAC比の算出用）
   learningGuardMode String    @default("warn") // warn / block（学習期間中の大変更の扱い）
   accessToken       String? // 暗号化
   refreshToken      String? // 暗号化
@@ -129,6 +132,8 @@ model AdConnection {
 // brandTag: 指名/非指名の分離レポート用（同期時に名前から自動判定。brand / nonbrand）
 model Campaign {
   brandTag String @default("nonbrand")
+  // 画面から手動修正した場合の値。設定されていれば同期時の自動判定より優先する
+  brandTagOverride String?
   id             String    @id @default(cuid())
   organizationId String
   connectionId   String
@@ -144,9 +149,65 @@ model Campaign {
 
   connection AdConnection  @relation(fields: [connectionId], references: [id], onDelete: Cascade)
   metrics    DailyMetric[]
+  leads      Lead[]
 
   @@unique([connectionId, externalId])
   @@index([organizationId, status])
+}
+
+// BtoBリード獲得の個票。CSVインポート（CRM/スプレッドシート）で取り込む。
+// 広告の集計データだけでは商談化率・CPO・CAC が出せないため、リード1件ごとの
+// その後（有効判定→MQL→商談→受注）を保持する。
+model Lead {
+  id                 String  @id @default(cuid())
+  organizationId     String
+  connectionId       String?
+  campaignId         String? // 解決できた場合の内部ID（brandTag / 目標値と JOIN できる）
+  campaignExternalId String? // CSVの生値（未解決でも捨てない）
+  campaignNameRaw    String? // CSVの生値
+
+  externalKey String // CSV側の一意キー（CRMレコードID等）。再取込の冪等性に使う
+  email       String?
+  companyName String?
+  personName  String?
+  memo        String? // 問い合わせ内容（NGワード判定の対象）
+
+  gclid       String? // 将来のオフラインCV戻し用（今回は保持のみ）
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+
+  validity      String  @default("unknown") // unknown / valid / invalid
+  invalidReason String?
+  stage         String  @default("lead") // lead / mql / meeting / won（到達した最高段階）
+  lost          Boolean @default(false) // 失注（stage は到達段階を保持する）
+  overridden    Boolean @default(false) // 人が手動修正したか（再取込で自動判定に戻さない）
+
+  dealAmountYen Int?
+  leadAt        DateTime // リード発生日（コホートの基準）
+  mqlAt         DateTime?
+  meetingAt     DateTime?
+  wonAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaign Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, externalKey])
+  @@index([organizationId, leadAt])
+  @@index([organizationId, validity, stage])
+}
+
+// 有効リードの自動判定ルール（組織ごとに1件）
+model LeadRuleSet {
+  id               String   @id @default(cuid())
+  organizationId   String   @unique
+  freeEmailInvalid Boolean  @default(true) // フリーメールを無効候補にする
+  requireCompany   Boolean  @default(false) // 会社名なしを無効候補にする
+  blockedDomains   String? // 改行区切り（競合ドメイン等）
+  blockedKeywords  String? // 改行区切り（営業/求人/採用/取材 等）
+  updatedAt        DateTime @updatedAt
 }
 
 // 日次実績（キャンペーン×日で1行。cron 同期時に upsert）。

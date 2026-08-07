@@ -40,8 +40,11 @@ export function toProviderConnection(conn: DbConnection): ProviderConnection {
   };
 }
 
-// キャンペーン名から指名/非指名を判定（手順書§6-A。誤判定は将来UIで修正可能にする）
-function detectBrandTag(name: string): string {
+// キャンペーン名から指名/非指名を判定（手順書§6-A）。
+// 画面から手動修正された場合は brandTagOverride が入るので、そちらを優先する
+// （そうしないと同期のたびに自動判定で上書きされ、修正が消える）。
+function detectBrandTag(name: string, override?: string | null): string {
+  if (override) return override;
   return /指名|ブランド|brand|社名|会社名/i.test(name) ? "brand" : "nonbrand";
 }
 
@@ -53,7 +56,16 @@ export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAY
 
     // キャンペーンを upsert し、externalId → campaign.id の対応表を作る
     const idMap = new Map<string, string>();
+    const existingOverrides = new Map(
+      (
+        await prisma.campaign.findMany({
+          where: { connectionId: conn.id, brandTagOverride: { not: null } },
+          select: { externalId: true, brandTagOverride: true },
+        })
+      ).map((c) => [c.externalId, c.brandTagOverride])
+    );
     for (const c of result.campaigns) {
+      const brandTag = detectBrandTag(c.name, existingOverrides.get(c.externalId));
       const saved = await prisma.campaign.upsert({
         where: { connectionId_externalId: { connectionId: conn.id, externalId: c.externalId } },
         update: {
@@ -63,7 +75,7 @@ export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAY
           dailyBudgetYen: c.dailyBudgetYen,
           startDate: c.startDate,
           endDate: c.endDate,
-          brandTag: detectBrandTag(c.name),
+          brandTag,
         },
         create: {
           organizationId: conn.organizationId,
@@ -75,7 +87,7 @@ export async function syncConnection(conn: DbConnection, days = DEFAULT_SYNC_DAY
           dailyBudgetYen: c.dailyBudgetYen,
           startDate: c.startDate,
           endDate: c.endDate,
-          brandTag: detectBrandTag(c.name),
+          brandTag,
         },
         select: { id: true },
       });

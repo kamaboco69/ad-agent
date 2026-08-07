@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { PLATFORMS, isPlatformId } from "@/lib/platforms";
+import { computeLeadKpi } from "@/lib/leads";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ export default async function AnalysisPage() {
   const mid = new Date(Date.now() - 30 * 86400_000);
   const start = new Date(Date.now() - 60 * 86400_000);
 
-  const [metrics, terms, recentChanges] = await Promise.all([
+  const [metrics, terms, recentChanges, leads, connTargets] = await Promise.all([
     prisma.dailyMetric.findMany({
       where: { organizationId: orgId, date: { gte: start } },
       select: {
@@ -89,7 +90,22 @@ export default async function AnalysisPage() {
       select: { connectionId: true, detail: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.lead.findMany({
+      where: { organizationId: orgId, leadAt: { gte: mid } },
+      select: { validity: true, stage: true, lost: true, dealAmountYen: true, leadAt: true },
+    }),
+    prisma.adConnection.findMany({
+      where: { organizationId: orgId },
+      select: { targetCpoYen: true, targetCacYen: true, avgLtvYen: true },
+    }),
   ]);
+
+  // BtoB目標値（接続ごとに持つが、リードは接続をまたぐため代表値を使う）
+  const targets = {
+    cpo: connTargets.find((c) => c.targetCpoYen)?.targetCpoYen ?? null,
+    cac: connTargets.find((c) => c.targetCacYen)?.targetCacYen ?? null,
+    ltv: connTargets.find((c) => c.avgLtvYen)?.avgLtvYen ?? null,
+  };
 
   // キャンペーン×期間（直近30日 / その前30日）で集計
   type Camp = {
@@ -246,6 +262,56 @@ export default async function AnalysisPage() {
         title: `${connName(t.connectionId)}: 昇格候補の検索語句が ${t._count}件`,
         evidence: `CVが出ており完全一致キーワード化で強化できる語句が残っています。`,
         action: "運用チェックの語句テーブルで「昇格」ボタンから正式登録（CV2件以上が対象）。",
+      });
+    }
+  }
+
+  // 3.5 BtoBリードのファネル診断（リードが登録されている場合のみ）
+  // BtoBはCPA（リード単価）だけ見ると必ず誤る。安いリードを大量に取れていても
+  // 商談化しなければ商談単価（CPO）は跳ね上がる。
+  if (leads.length > 0) {
+    const costAll = [...conns.values()].reduce((a, c) => a + c.cur.costYen, 0);
+    const k = computeLeadKpi(leads, costAll, targets.ltv);
+    const g = (v: number) => `${(v * 100).toFixed(0)}%`;
+
+    if (k.valid > 0 && k.meetingRate < 0.1 && k.leads >= 10) {
+      findings.push({
+        level: "crit",
+        title: `リードは取れているが商談につながっていない（商談化率 ${g(k.meetingRate)}）`,
+        evidence: `有効リード ${k.valid}件に対し商談 ${k.meetings}件。リード単価は ${k.cpl ? yen(k.cpl) : "—"} だが、商談単価（CPO）は ${k.cpo ? yen(k.cpo) : "算出不可"}。`,
+        action: "安いリードを大量に取れているが質が伴っていない状態。入札を上げても商談は増えない。除外キーワードの追加とターゲティング（地域・企業規模・検索意図）の見直しを優先し、フォームに会社名・電話を必須で加えて足切りする。",
+      });
+    }
+    if (k.leads >= 10 && k.validRate < 0.5) {
+      findings.push({
+        level: "crit",
+        title: `有効リード率が ${g(k.validRate)} — 半分以上が無効リード`,
+        evidence: `全 ${k.leads}件のうち有効は ${k.valid}件。無効の主因は自動判定の理由欄（フリーメール・NGワード・除外ドメイン）で確認できます。`,
+        action: "無効リードを生んでいる流入元を検索語句レポートで特定して除外。無効分の広告費は丸ごと損失なので、ここを詰めるのが最も費用対効果が高い。",
+      });
+    }
+    if (targets.cpo && k.cpo && k.cpo > targets.cpo) {
+      findings.push({
+        level: "warn",
+        title: `商談単価（CPO）が目標を超過`,
+        evidence: `CPO ${yen(k.cpo)} が目標 ${yen(targets.cpo)} を ${fmtDiff(diffPct(k.cpo, targets.cpo))} 超過（商談 ${k.meetings}件）。`,
+        action: "リード単価ではなくCPOで判断する。商談化率が低いなら質、リード数が少ないなら量が原因。上の分解診断と合わせて切り分ける。",
+      });
+    }
+    if (targets.cac && k.cac && k.cac <= targets.cac * 0.7 && k.wons >= 2) {
+      findings.push({
+        level: "good",
+        title: `受注単価（CAC）が目標を大幅達成 — 拡大余地`,
+        evidence: `CAC ${yen(k.cac)}（目標 ${yen(targets.cac)} の${Math.round((k.cac / targets.cac) * 100)}%）・受注 ${k.wons}件・受注率 ${g(k.wonRate)}。${k.ltvCacRatio ? `LTV/CAC は ${k.ltvCacRatio.toFixed(1)}倍。` : ""}`,
+        action: "獲得の経済性が成立している。好調キャンペーンの日予算を+20%以内で1段階だけ増額（1回1変更・2週間観察）。",
+      });
+    }
+    if (k.meetings === 0 && k.leads >= 5) {
+      findings.push({
+        level: "info",
+        title: "商談以降のデータが未登録",
+        evidence: `リード ${k.leads}件は登録されていますが、商談・受注が0件です。BtoBは検討期間が3〜12ヶ月あるため、単に未成熟な可能性もあります。`,
+        action: "CRMから商談・受注のCSVを月次で取り込む運用に載せてください。CPO/CACが出るまではリード単価での判断は暫定に留めること。",
       });
     }
   }

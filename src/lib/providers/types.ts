@@ -71,6 +71,7 @@ export interface SearchTermRow {
 export interface ConversionHealth {
   trackingStatus: string; // 例: CONVERSION_TRACKING_MANAGED_BY_SELF / NOT_CONVERSION_TRACKED
   actions: Array<{
+    resourceName: string;
     name: string;
     category: string;
     type: string;

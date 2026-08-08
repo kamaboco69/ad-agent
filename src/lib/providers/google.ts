@@ -604,6 +604,74 @@ export function createGoogleProvider(): AdProvider {
       return { assets, creatives, extensionsByCampaign, errors };
     },
 
+    // RSAの見出し・説明文を差し替え／追加する。
+    // ads:mutate は配列を丸ごと置き換えるため、現在の全アセットを取得してから組み立て直す。
+    // 広告IDは変わらないので実績は引き継がれる（新規作成ではない）。
+    async updateRsaAsset(conn, adExternalId, change) {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const login = loginCid(conn);
+
+      const rows = await gaqlSearch(
+        token,
+        customerId,
+        `SELECT ad_group_ad.ad.id, ad_group_ad.ad.responsive_search_ad.headlines,
+                ad_group_ad.ad.responsive_search_ad.descriptions
+         FROM ad_group_ad
+         WHERE ad_group_ad.ad.id = ${Number(adExternalId)}`,
+        login
+      );
+      const rsa = rows[0]?.adGroupAd?.ad?.responsiveSearchAd;
+      if (!rsa) throw new ProviderError("対象の広告が見つかりません（レスポンシブ検索広告のみ編集できます）");
+
+      const toAsset = (a: { text?: string; pinnedField?: string }) => ({
+        text: a.text ?? "",
+        ...(a.pinnedField && a.pinnedField !== "UNSPECIFIED" ? { pinnedField: a.pinnedField } : {}),
+      });
+      const headlines = (rsa.headlines ?? []).map(toAsset);
+      const descriptions = (rsa.descriptions ?? []).map(toAsset);
+      const list = change.fieldType === "HEADLINE" ? headlines : descriptions;
+      const max = change.fieldType === "HEADLINE" ? 15 : 4;
+
+      if (list.some((a) => a.text === change.newText)) {
+        throw new ProviderError("同じ文言が既に登録されています");
+      }
+      if (change.mode === "replace") {
+        const idx = list.findIndex((a) => a.text === change.oldText);
+        if (idx < 0) throw new ProviderError("差し替え対象の文言が見つかりません（既に変更されている可能性があります）");
+        // ピン留めは引き継ぐ（法務・ブランド上の固定を壊さないため）
+        list[idx] = { ...list[idx], text: change.newText };
+      } else {
+        if (list.length >= max) {
+          throw new ProviderError(
+            `${change.fieldType === "HEADLINE" ? "見出し" : "説明文"}は上限${max}本です。追加するには既存を差し替えてください`
+          );
+        }
+        list.push({ text: change.newText });
+      }
+
+      const res = await fetch(`${ADS_API}/customers/${customerId}/ads:mutate`, {
+        method: "POST",
+        headers: adsHeaders(token, login),
+        body: JSON.stringify({
+          operations: [
+            {
+              update: {
+                resourceName: `customers/${customerId}/ads/${adExternalId}`,
+                responsiveSearchAd: { headlines, descriptions },
+              },
+              updateMask: "responsive_search_ad.headlines,responsive_search_ad.descriptions",
+            },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
+        throw new ProviderError(`広告の更新に失敗: ${adsErrorMessage(json, res.status)}`);
+      }
+      return { headlines: headlines.length, descriptions: descriptions.length };
+    },
+
     // コンバージョン計測のヘルスチェック（トラッキング状態＋有効なCVアクション一覧）
     async conversionHealth(conn): Promise<ConversionHealth> {
       const token = await freshToken(conn);

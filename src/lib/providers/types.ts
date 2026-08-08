@@ -158,6 +158,12 @@ export interface AdProvider {
   recentChanges?(conn: ProviderConnection, days: number): Promise<ChangeEventRow[]>;
   // 広告アセット（見出し・説明文・拡張）の評価と実績。クリエイティブPDCAに使う
   listCreatives?(conn: ProviderConnection, days: number): Promise<CreativeReport>;
+  // RSAの見出し・説明文を差し替え／追加する（広告IDは変わらず実績を引き継ぐ）
+  updateRsaAsset?(
+    conn: ProviderConnection,
+    adExternalId: string,
+    change: { fieldType: "HEADLINE" | "DESCRIPTION"; mode: "replace" | "add"; oldText?: string; newText: string }
+  ): Promise<{ headlines: number; descriptions: number }>;
 }
 
 export class ProviderError extends Error {

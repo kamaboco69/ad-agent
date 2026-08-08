@@ -10,6 +10,14 @@ import { aiConfigured } from "@/lib/insights";
 
 export const CREATIVE_DAYS = 30;
 
+// Google広告の文字数カウント: 全角（日本語など）は2文字分として数える。
+// 見出し30・説明文90が上限＝日本語なら全角15文字・45文字。
+export const AD_TEXT_LIMITS: Record<string, number> = { HEADLINE: 30, DESCRIPTION: 90 };
+
+export function adTextLength(s: string): number {
+  return [...s].reduce((n, ch) => n + (/[ -~｡-ﾟ]/.test(ch) ? 1 : 2), 0);
+}
+
 type DbConnection = Parameters<typeof toProviderConnection>[0] & { organizationId: string; mode: string };
 
 const EXT_TYPES = ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET"];

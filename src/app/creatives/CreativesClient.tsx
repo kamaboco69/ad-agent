@@ -71,6 +71,65 @@ const LEVEL_STYLE: Record<CreativeFinding["level"], { chip: string; label: strin
   info: { chip: "bg-gray-200 text-gray-600", label: "情報", border: "border-l-neutral-400" },
 };
 
+// Google広告の文字数カウント（全角は2文字分）
+const adLen = (s: string) => [...s].reduce((n, ch) => n + (/[ -~｡-ﾟ]/.test(ch) ? 1 : 2), 0);
+const LIMIT: Record<string, number> = { HEADLINE: 30, DESCRIPTION: 90 };
+
+// 適用フォーム: 文言を確認・編集してから広告に反映する（本番配信に直接影響するため）
+function ApplyForm({
+  asset, busy, onCancel, onApply,
+}: {
+  asset: AssetRow;
+  busy: boolean;
+  onCancel: () => void;
+  onApply: (text: string, mode: "replace" | "add") => void;
+}) {
+  const [text, setText] = useState(asset.aiSuggestion ?? "");
+  const [mode, setMode] = useState<"replace" | "add">("replace");
+  const limit = LIMIT[asset.fieldType] ?? 30;
+  const len = adLen(text);
+  const over = len > limit;
+
+  return (
+    <div className="mt-1.5 border border-sky-300 bg-sky-50 rounded-lg p-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={asset.fieldType === "HEADLINE" ? 2 : 3}
+        className="w-full text-xs border border-gray-300 rounded px-1.5 py-1 bg-white"
+      />
+      <div className="flex items-center gap-2 mt-1">
+        <span className={clsx("text-[10px] tabular-nums", over ? "text-red-600 font-semibold" : "text-gray-500")}>
+          {len}/{limit}
+        </span>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value as "replace" | "add")}
+          className="text-[10px] border border-gray-300 rounded px-1 py-0.5 bg-white"
+        >
+          <option value="replace">この文言と差し替える</option>
+          <option value="add">残したまま追加する</option>
+        </select>
+        <button onClick={onCancel} className="ml-auto text-[10px] text-gray-600 hover:text-gray-900">
+          やめる
+        </button>
+        <button
+          onClick={() => onApply(text.trim(), mode)}
+          disabled={busy || over || !text.trim()}
+          className="text-[10px] bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded px-2 py-0.5"
+        >
+          {busy ? "反映中…" : "広告に反映"}
+        </button>
+      </div>
+      <p className="text-[10px] text-gray-500 mt-1">
+        {mode === "replace"
+          ? "既存の文言を書き換えます。ピン留めは維持されます。"
+          : "既存を残して新しく追加します（上限まで）。手順書の推奨はこちらです。"}
+      </p>
+    </div>
+  );
+}
+
 export function CreativesClient({
   connections, assets, creatives, findings,
 }: {
@@ -84,6 +143,40 @@ export function CreativesClient({
   const [banner, setBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [connId, setConnId] = useState(connections[0]?.id ?? "");
   const [tab, setTab] = useState<"HEADLINE" | "DESCRIPTION" | "EXT">("HEADLINE");
+  const [editing, setEditing] = useState<string | null>(null);
+
+  // AIの案を実際の広告に反映する
+  const apply = async (asset: AssetRow, newText: string, mode: "replace" | "add") => {
+    const label = asset.fieldType === "HEADLINE" ? "見出し" : "説明文";
+    const msg =
+      mode === "replace"
+        ? `${label}を書き換えます。\n\n変更前:「${asset.text}」\n変更後:「${newText}」\n\n配信中の広告に即時反映されます。よろしいですか？`
+        : `${label}に「${newText}」を追加します。\n配信中の広告に即時反映されます。よろしいですか？`;
+    if (!confirm(msg)) return;
+
+    setBusy(`apply-${asset.id}`);
+    setBanner(null);
+    try {
+      const res = await fetch(`/api/connections/${connId}/creatives/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId: asset.id, newText, mode }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setBanner({ kind: "error", text: json.error ?? "反映に失敗しました" });
+        return;
+      }
+      setEditing(null);
+      setBanner({
+        kind: "ok",
+        text: `${label}を${mode === "replace" ? "差し替え" : "追加"}ました。変更ログに記録し、14日後に効果を自動検証します。`,
+      });
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const call = async (key: string, url: string, okMsg: (j: Record<string, number>) => string) => {
     setBusy(key);
@@ -290,12 +383,35 @@ export function CreativesClient({
                         <td className="text-right px-3 tabular-nums text-gray-600">{num(a.impressions)}</td>
                         <td className="text-right px-3 tabular-nums text-gray-600">{pctOf(a.clicks, a.impressions)}</td>
                         <td className="text-right px-3 tabular-nums text-gray-800">{a.conversions.toFixed(1)}</td>
-                        <td className="pl-3 max-w-[320px]">
-                          {a.aiVerdict === "replace" ? (
+                        <td className="pl-3 max-w-[340px]">
+                          {a.aiVerdict === "applied" ? (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-300">
+                              反映済み
+                            </span>
+                          ) : a.aiVerdict === "replace" ? (
                             <>
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-300">差し替え推奨</span>
-                              {a.aiSuggestion && <p className="text-xs text-gray-800 mt-1">→「{a.aiSuggestion}」</p>}
-                              {a.aiReason && <p className="text-[10px] text-gray-500">{a.aiReason}</p>}
+                              {a.aiReason && <p className="text-[10px] text-gray-500 mt-0.5">{a.aiReason}</p>}
+                              {a.aiSuggestion &&
+                                (editing === a.id ? (
+                                  <ApplyForm
+                                    asset={a}
+                                    busy={busy === `apply-${a.id}`}
+                                    onCancel={() => setEditing(null)}
+                                    onApply={(text, mode) => apply(a, text, mode)}
+                                  />
+                                ) : (
+                                  <div className="mt-1">
+                                    <p className="text-xs text-gray-800">→「{a.aiSuggestion}」</p>
+                                    <button
+                                      onClick={() => setEditing(a.id)}
+                                      disabled={busy !== null}
+                                      className="mt-1 text-[11px] bg-sky-700 hover:bg-sky-600 disabled:opacity-50 text-white rounded px-2 py-0.5"
+                                    >
+                                      この案を適用
+                                    </button>
+                                  </div>
+                                ))}
                             </>
                           ) : a.aiVerdict === "keep" ? (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">継続</span>

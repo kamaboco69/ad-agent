@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getOrgContext } from "@/lib/auth-helpers";
 import { PLATFORMS, isPlatformId } from "@/lib/platforms";
 import { computeLeadKpi } from "@/lib/leads";
+import { diagnoseCreatives } from "@/lib/creatives";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export default async function AnalysisPage() {
   const mid = new Date(Date.now() - 30 * 86400_000);
   const start = new Date(Date.now() - 60 * 86400_000);
 
-  const [metrics, terms, recentChanges, leads, connTargets] = await Promise.all([
+  const [metrics, terms, recentChanges, leads, connTargets, adAssets, adCreatives] = await Promise.all([
     prisma.dailyMetric.findMany({
       where: { organizationId: orgId, date: { gte: start } },
       select: {
@@ -97,6 +98,22 @@ export default async function AnalysisPage() {
     prisma.adConnection.findMany({
       where: { organizationId: orgId },
       select: { targetCpoYen: true, targetCacYen: true, avgLtvYen: true },
+    }),
+    prisma.adAsset.findMany({
+      where: { organizationId: orgId },
+      select: {
+        fieldType: true, text: true, performanceLabel: true, lowSince: true,
+        impressions: true, clicks: true, campaignName: true, adGroupName: true,
+      },
+      take: 500,
+    }),
+    prisma.adCreative.findMany({
+      where: { organizationId: orgId },
+      select: {
+        adGroupName: true, campaignName: true, adStrength: true,
+        headlineCount: true, descriptionCount: true, pinnedCount: true, extensions: true,
+      },
+      take: 200,
     }),
   ]);
 
@@ -313,6 +330,13 @@ export default async function AnalysisPage() {
         evidence: `リード ${k.leads}件は登録されていますが、商談・受注が0件です。BtoBは検討期間が3〜12ヶ月あるため、単に未成熟な可能性もあります。`,
         action: "CRMから商談・受注のCSVを月次で取り込む運用に載せてください。CPO/CACが出るまではリード単価での判断は暫定に留めること。",
       });
+    }
+  }
+
+  // 3.6 クリエイティブ（見出し・説明文の評価、広告の有効性、拡張アセット）
+  if (adAssets.length > 0 || adCreatives.length > 0) {
+    for (const f of diagnoseCreatives(adAssets, adCreatives)) {
+      findings.push({ ...f, action: `${f.action}（詳しくは「広告文分析」ページで）` });
     }
   }
 

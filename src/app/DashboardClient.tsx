@@ -16,6 +16,7 @@ import {
   LogOut,
   Pause,
   Users,
+  Type,
   Play,
 } from "lucide-react";
 import clsx from "clsx";
@@ -910,6 +911,14 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
           </button>
         ))}
       </nav>
+      <a
+        href="/creatives"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"
+        title="見出し・説明文の評価と実績から差し替え候補と改善案を出す"
+      >
+        <Type size={15} />
+        広告文分析
+      </a>
       <a
         href="/leads"
         className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"

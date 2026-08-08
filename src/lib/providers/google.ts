@@ -1,5 +1,8 @@
 import type {
+  AdAssetRow,
+  AdCreativeRow,
   AdProvider,
+  CreativeReport,
   ChangeEventRow,
   ConversionHealth,
   ProviderConnection,
@@ -93,6 +96,29 @@ interface SearchRow {
     resourceChangeOperation?: string;
     changedFields?: string;
   };
+  adGroup?: { id?: string; name?: string };
+  adGroupAd?: {
+    adStrength?: string;
+    status?: string;
+    ad?: {
+      id?: string;
+      finalUrls?: string[];
+      responsiveSearchAd?: {
+        headlines?: Array<{ text?: string; pinnedField?: string }>;
+        descriptions?: Array<{ text?: string; pinnedField?: string }>;
+      };
+    };
+  };
+  adGroupAdAssetView?: { fieldType?: string; performanceLabel?: string; pinnedField?: string };
+  asset?: {
+    id?: string;
+    type?: string;
+    textAsset?: { text?: string };
+    sitelinkAsset?: { linkText?: string };
+    calloutAsset?: { calloutText?: string };
+    structuredSnippetAsset?: { header?: string; values?: string[] };
+  };
+  campaignAsset?: { fieldType?: string; status?: string };
 }
 
 // エラー応答から GoogleAdsFailure の詳細メッセージを取り出す（無ければ汎用 message）
@@ -436,6 +462,146 @@ export function createGoogleProvider(): AdProvider {
         const json = (await res.json().catch(() => ({}))) as AdsErrorBody;
         throw new ProviderError(`キーワード登録に失敗: ${adsErrorMessage(json, res.status)}`);
       }
+    },
+
+    // 広告アセットの評価と実績（クリエイティブPDCA）。
+    // 3種のクエリを個別に try/catch し、1つ失敗しても取れた分は返す
+    // （アセット系は広告タイプによって非対応のリソースがあるため）。
+    async listCreatives(conn, days): Promise<CreativeReport> {
+      const token = await freshToken(conn);
+      const customerId = cid(conn);
+      const login = loginCid(conn);
+      const dates = lastDatesJst(days);
+      const range = `segments.date BETWEEN '${dates[0]}' AND '${dates[dates.length - 1]}'`;
+      const errors: string[] = [];
+
+      // ① RSAの見出し・説明文ごとの評価と実績
+      let assets: AdAssetRow[] = [];
+      try {
+        const rows = await gaqlSearch(
+          token,
+          customerId,
+          `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name, ad_group_ad.ad.id,
+                  ad_group_ad_asset_view.field_type, ad_group_ad_asset_view.performance_label,
+                  ad_group_ad_asset_view.pinned_field, asset.text_asset.text,
+                  metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
+           FROM ad_group_ad_asset_view
+           WHERE ${range} AND ad_group_ad.status != 'REMOVED'
+           ORDER BY metrics.impressions DESC
+           LIMIT 1000`,
+          login
+        );
+        assets = rows
+          .filter((r) => r.asset?.textAsset?.text)
+          .map((r) => ({
+            campaignExternalId: String(r.campaign?.id ?? ""),
+            campaignName: r.campaign?.name ?? "(不明)",
+            adGroupExternalId: r.adGroup?.id ? String(r.adGroup.id) : null,
+            adGroupName: r.adGroup?.name ?? null,
+            adExternalId: r.adGroupAd?.ad?.id ? String(r.adGroupAd.ad.id) : null,
+            fieldType: r.adGroupAdAssetView?.fieldType ?? "UNKNOWN",
+            text: r.asset!.textAsset!.text!,
+            performanceLabel: r.adGroupAdAssetView?.performanceLabel ?? null,
+            pinnedField:
+              r.adGroupAdAssetView?.pinnedField && r.adGroupAdAssetView.pinnedField !== "UNSPECIFIED"
+                ? r.adGroupAdAssetView.pinnedField
+                : null,
+            impressions: Number(r.metrics?.impressions ?? 0),
+            clicks: Number(r.metrics?.clicks ?? 0),
+            costYen: Math.round(Number(r.metrics?.costMicros ?? 0) / 1_000_000),
+            conversions: Number(r.metrics?.conversions ?? 0),
+          }));
+      } catch (e) {
+        errors.push(`見出し・説明文: ${e instanceof Error ? e.message : "取得失敗"}`);
+      }
+
+      // ② 広告（RSA）単位の有効性と入稿本数
+      let creatives: AdCreativeRow[] = [];
+      try {
+        const rows = await gaqlSearch(
+          token,
+          customerId,
+          `SELECT campaign.id, campaign.name, ad_group.id, ad_group.name,
+                  ad_group_ad.ad.id, ad_group_ad.ad_strength, ad_group_ad.ad.final_urls,
+                  ad_group_ad.ad.responsive_search_ad.headlines,
+                  ad_group_ad.ad.responsive_search_ad.descriptions
+           FROM ad_group_ad
+           WHERE ad_group_ad.status = 'ENABLED' AND ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'
+           LIMIT 500`,
+          login
+        );
+        creatives = rows
+          .filter((r) => r.adGroupAd?.ad?.id)
+          .map((r) => {
+            const rsa = r.adGroupAd?.ad?.responsiveSearchAd;
+            const h = rsa?.headlines ?? [];
+            const d = rsa?.descriptions ?? [];
+            const pinned = [...h, ...d].filter((a) => a.pinnedField && a.pinnedField !== "UNSPECIFIED").length;
+            return {
+              campaignExternalId: String(r.campaign?.id ?? ""),
+              campaignName: r.campaign?.name ?? "(不明)",
+              adGroupExternalId: String(r.adGroup?.id ?? ""),
+              adGroupName: r.adGroup?.name ?? "(不明)",
+              adExternalId: String(r.adGroupAd!.ad!.id),
+              adStrength: r.adGroupAd?.adStrength ?? null,
+              headlineCount: h.length,
+              descriptionCount: d.length,
+              pinnedCount: pinned,
+              finalUrl: r.adGroupAd?.ad?.finalUrls?.[0] ?? null,
+            };
+          });
+      } catch (e) {
+        errors.push(`広告の有効性: ${e instanceof Error ? e.message : "取得失敗"}`);
+      }
+
+      // ③ 拡張アセット（サイトリンク・コールアウト・構造化スニペット）の設定状況
+      const extensionsByCampaign: Record<string, string[]> = {};
+      try {
+        const rows = await gaqlSearch(
+          token,
+          customerId,
+          `SELECT campaign.id, campaign_asset.field_type, asset.type,
+                  asset.sitelink_asset.link_text, asset.callout_asset.callout_text,
+                  asset.structured_snippet_asset.header
+           FROM campaign_asset
+           WHERE campaign_asset.status != 'REMOVED'
+           LIMIT 500`,
+          login
+        );
+        for (const r of rows) {
+          const cid2 = String(r.campaign?.id ?? "");
+          const ft = r.campaignAsset?.fieldType;
+          if (!cid2 || !ft) continue;
+          if (!extensionsByCampaign[cid2]) extensionsByCampaign[cid2] = [];
+          if (!extensionsByCampaign[cid2].includes(ft)) extensionsByCampaign[cid2].push(ft);
+          // サイトリンク等のテキストもアセットとして扱い、実績なしで一覧に出す
+          const text =
+            r.asset?.sitelinkAsset?.linkText ??
+            r.asset?.calloutAsset?.calloutText ??
+            r.asset?.structuredSnippetAsset?.header;
+          if (text && ["SITELINK", "CALLOUT", "STRUCTURED_SNIPPET"].includes(ft)) {
+            assets.push({
+              campaignExternalId: cid2,
+              campaignName: r.campaign?.name ?? "(不明)",
+              adGroupExternalId: null,
+              adGroupName: null,
+              adExternalId: null,
+              fieldType: ft,
+              text,
+              performanceLabel: null,
+              pinnedField: null,
+              impressions: 0,
+              clicks: 0,
+              costYen: 0,
+              conversions: 0,
+            });
+          }
+        }
+      } catch (e) {
+        errors.push(`拡張アセット: ${e instanceof Error ? e.message : "取得失敗"}`);
+      }
+
+      return { assets, creatives, extensionsByCampaign, errors };
     },
 
     // コンバージョン計測のヘルスチェック（トラッキング状態＋有効なCVアクション一覧）

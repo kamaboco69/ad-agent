@@ -82,6 +82,47 @@ export interface ConversionHealth {
   }>;
 }
 
+// 広告アセット1件（RSAの見出し・説明文、およびサイトリンク等の拡張アセット）
+export interface AdAssetRow {
+  campaignExternalId: string;
+  campaignName: string;
+  adGroupExternalId: string | null;
+  adGroupName: string | null;
+  adExternalId: string | null;
+  fieldType: string; // HEADLINE / DESCRIPTION / SITELINK / CALLOUT / STRUCTURED_SNIPPET
+  text: string;
+  performanceLabel: string | null; // BEST / GOOD / LOW / LEARNING / PENDING / UNKNOWN
+  pinnedField: string | null; // ピン留め位置（固定すると組み合わせ最適化を妨げる）
+  impressions: number;
+  clicks: number;
+  costYen: number;
+  conversions: number;
+}
+
+// 広告（RSA）1本の構成情報。広告の有効性と入稿本数の診断に使う
+export interface AdCreativeRow {
+  campaignExternalId: string;
+  campaignName: string;
+  adGroupExternalId: string;
+  adGroupName: string;
+  adExternalId: string;
+  adStrength: string | null; // EXCELLENT / GOOD / AVERAGE / POOR / PENDING
+  headlineCount: number;
+  descriptionCount: number;
+  pinnedCount: number;
+  finalUrl: string | null;
+}
+
+export interface CreativeReport {
+  assets: AdAssetRow[];
+  creatives: AdCreativeRow[];
+  // キャンペーンごとに設定済みの拡張アセット種別（未設定の検知に使う）
+  extensionsByCampaign: Record<string, string[]>;
+  // 部分的に失敗したクエリのエラー。0件だったときに原因が分かるよう画面まで運ぶ
+  // （握りつぶすと「なぜ空なのか」が分からなくなる）
+  errors: string[];
+}
+
 // アカウントの変更履歴（学習期間ガードの判定用）
 export interface ChangeEventRow {
   at: string; // 変更日時
@@ -115,6 +156,8 @@ export interface AdProvider {
   addKeyword?(conn: ProviderConnection, campaignExternalId: string, term: string): Promise<void>;
   conversionHealth?(conn: ProviderConnection): Promise<ConversionHealth>;
   recentChanges?(conn: ProviderConnection, days: number): Promise<ChangeEventRow[]>;
+  // 広告アセット（見出し・説明文・拡張）の評価と実績。クリエイティブPDCAに使う
+  listCreatives?(conn: ProviderConnection, days: number): Promise<CreativeReport>;
 }
 
 export class ProviderError extends Error {

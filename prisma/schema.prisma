@@ -199,6 +199,65 @@ model Lead {
   @@index([organizationId, validity, stage])
 }
 
+// 広告アセット（RSAの見出し・説明文、サイトリンク等の拡張）の評価と実績。
+// 同期のたびに接続単位で入れ替えるが、lowSince と人の判断（aiVerdict の採否）は引き継ぐ。
+model AdAsset {
+  id                 String  @id @default(cuid())
+  organizationId     String
+  connectionId       String
+  assetKey           String // 広告ID|種別|テキスト。再同期の冪等性に使う
+  campaignExternalId String
+  campaignName       String
+  adGroupExternalId  String?
+  adGroupName        String?
+  adExternalId       String?
+
+  fieldType        String // HEADLINE / DESCRIPTION / SITELINK / CALLOUT / STRUCTURED_SNIPPET
+  text             String
+  performanceLabel String? // BEST / GOOD / LOW / LEARNING / PENDING
+  pinnedField      String? // ピン留め位置（組み合わせ最適化を妨げるため最小限が望ましい）
+
+  impressions Int   @default(0)
+  clicks      Int   @default(0)
+  costYen     Int   @default(0)
+  conversions Float @default(0)
+
+  // 「低評価が2週間継続したら差し替え候補」（手順書§2-C）の判定に使う
+  lowSince DateTime?
+
+  aiVerdict    String? // keep / replace / add
+  aiSuggestion String? // 差し替え・追加を提案する具体的な文言
+  aiReason     String?
+
+  syncedAt DateTime @default(now())
+
+  @@unique([connectionId, assetKey])
+  @@index([organizationId, fieldType])
+  @@index([connectionId, performanceLabel])
+}
+
+// 広告（RSA）1本の構成。広告の有効性と入稿本数の診断に使う（手順書§7-D）
+model AdCreative {
+  id                 String  @id @default(cuid())
+  organizationId     String
+  connectionId       String
+  adExternalId       String
+  campaignExternalId String
+  campaignName       String
+  adGroupExternalId  String
+  adGroupName        String
+  adStrength         String? // EXCELLENT / GOOD / AVERAGE / POOR / PENDING
+  headlineCount      Int     @default(0)
+  descriptionCount   Int     @default(0)
+  pinnedCount        Int     @default(0)
+  finalUrl           String?
+  extensions         String? // カンマ区切り: SITELINK,CALLOUT,STRUCTURED_SNIPPET
+  syncedAt           DateTime @default(now())
+
+  @@unique([connectionId, adExternalId])
+  @@index([organizationId])
+}
+
 // 有効リードの自動判定ルール（組織ごとに1件）
 model LeadRuleSet {
   id               String   @id @default(cuid())

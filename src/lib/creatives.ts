@@ -104,6 +104,11 @@ const SYSTEM = `あなたは日本のリスティング広告のコピーライ�
 - "add" … この訴求軸が不足している（既存アセットには無い切り口）。text は空でよい。
 
 ルール:
+- **実績（表示回数）が0、評価が「評価対象外」の場合**（配信停止中・出稿直後など）は、実績ではなく
+  コピーそのものの質で判断する。具体的には ①訴求の重複（似た意味の見出しが複数ある）
+  ②訴求軸の偏り（価格・スピード・実績・保証・地域性・限定条件などのうち何が欠けているか）
+  ③文字数の余り（上限に対して極端に短い＝情報量不足）④行動喚起の有無 を見る。
+  データ不足を理由に判断を放棄しないこと。
 - suggestion には、差し替え・追加する具体的な日本語の文言を書く。見出しは全角15文字以内（半角30文字以内）、説明文は全角45文字以内（半角90文字以内）を厳守。
 - 既存の勝ちアセット（BEST/GOOD）と訴求が重複する案は出さない。
 - 数字・実績・限定条件・ベネフィットなど、既存に無い切り口を優先する。
@@ -236,6 +241,22 @@ export function diagnoseCreatives(
 ): CreativeFinding[] {
   const out: CreativeFinding[] = [];
 
+  // 配信されていない＝Googleが評価を付けられない状態（NOT_APPLICABLE が大半）
+  const rated = assets.filter((a) => ["BEST", "GOOD", "LOW"].includes(a.performanceLabel ?? ""));
+  const textAssets = assets.filter((a) => ["HEADLINE", "DESCRIPTION"].includes(a.fieldType));
+  if (textAssets.length > 0 && rated.length === 0) {
+    const served = textAssets.filter((a) => a.impressions > 0).length;
+    out.push({
+      level: "info",
+      title: "アセットの評価が付いていません（配信実績が無いため）",
+      evidence: `見出し・説明文 ${textAssets.length}件のうち、Googleの評価（最良/良/低）が付いたものは0件。表示実績があるアセットは ${served}件です。`,
+      action:
+        served === 0
+          ? "対象の検索キャンペーンが停止中の可能性があります。配信を再開すると2週間ほどで評価が付き、どの訴求が効いているか判断できるようになります。それまでは下の「AIで改善案を出す」でコピーの質（訴求の重複・不足している切り口）から改善できます。"
+          : "配信量が少なく評価が確定していません。もう少しデータが貯まるまで待ってください。",
+    });
+  }
+
   // 低評価が2週間以上続いているアセット
   const stale = assets.filter(
     (a) => a.performanceLabel === "LOW" && a.lowSince && Date.now() - a.lowSince.getTime() >= LOW_DAYS * 86400_000
@@ -260,14 +281,24 @@ export function diagnoseCreatives(
     });
   }
 
-  // 入稿本数が不足（有効性が良好でも機会損失）
-  const thin = creatives.filter((c) => c.headlineCount > 0 && c.headlineCount < 8 && c.adStrength !== "POOR" && c.adStrength !== "AVERAGE");
-  if (thin.length > 0) {
+  // 入稿本数が不足（有効性が良好でも機会損失。手順書§7-D）
+  const thinHead = creatives.filter((c) => c.headlineCount > 0 && c.headlineCount < 12);
+  if (thinHead.length > 0) {
     out.push({
       level: "info",
-      title: `見出しの本数が少ない広告が ${thin.length}件`,
-      evidence: thin.slice(0, 4).map((c) => `${c.adGroupName}（見出し${c.headlineCount}本）`).join("、"),
+      title: `見出しの本数が少ない広告が ${thinHead.length}件`,
+      evidence: thinHead.slice(0, 4).map((c) => `${c.adGroupName}（${c.headlineCount}/15本）`).join("、"),
       action: "見出しは上限15本近くまで入れると組み合わせの探索範囲が広がります。関連性の低いものは入れず、訴求軸を変えた案を足してください。",
+    });
+  }
+  // 説明文は4本が上限。2本以下は表示機会を捨てている
+  const thinDesc = creatives.filter((c) => c.descriptionCount > 0 && c.descriptionCount <= 2);
+  if (thinDesc.length > 0) {
+    out.push({
+      level: "warn",
+      title: `説明文が上限の半分以下の広告が ${thinDesc.length}件`,
+      evidence: thinDesc.slice(0, 4).map((c) => `${c.adGroupName}（${c.descriptionCount}/4本）`).join("、"),
+      action: "説明文は4本まで入れられます。2本では組み合わせの幅が出ず、長い表示枠が使われないことがあります。異なる訴求（実績・保証・料金の明朗さなど）で2本追加してください。",
     });
   }
 

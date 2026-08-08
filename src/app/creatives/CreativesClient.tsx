@@ -44,6 +44,8 @@ const LABELS: Record<string, { text: string; cls: string }> = {
   LOW: { text: "低", cls: "bg-red-50 text-red-700 border border-red-300" },
   LEARNING: { text: "学習中", cls: "bg-amber-50 text-amber-700 border border-amber-300" },
   PENDING: { text: "保留", cls: "bg-gray-100 text-gray-600" },
+  NOT_APPLICABLE: { text: "評価対象外", cls: "bg-gray-100 text-gray-500" },
+  UNKNOWN: { text: "不明", cls: "bg-gray-100 text-gray-500" },
 };
 
 const STRENGTH: Record<string, { text: string; cls: string }> = {

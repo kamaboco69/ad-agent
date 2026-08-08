@@ -215,6 +215,174 @@ export async function analyzeCreatives(connectionId: string): Promise<{ analyzed
   return { analyzed };
 }
 
+// 1件だけ改善案を出す（一覧の「改善」ボタン用。全件分析を待たずに済む）
+export async function suggestOneAsset(assetId: string): Promise<{ suggestion: string; reason: string }> {
+  if (!aiConfigured()) throw new Error("ANTHROPIC_API_KEY が未設定です");
+
+  const asset = await prisma.adAsset.findUnique({ where: { id: assetId } });
+  if (!asset) throw new Error("対象のアセットが見つかりません");
+
+  // 同じ広告の他アセットを渡し、訴求が重複しない案を出させる
+  const siblings = await prisma.adAsset.findMany({
+    where: {
+      connectionId: asset.connectionId,
+      adExternalId: asset.adExternalId,
+      fieldType: asset.fieldType,
+      id: { not: assetId },
+    },
+    select: { text: true, performanceLabel: true, impressions: true, clicks: true },
+  });
+
+  const isHeadline = asset.fieldType === "HEADLINE";
+  const limitJa = isHeadline ? 15 : 45;
+  const perf =
+    asset.impressions > 0
+      ? `表示${asset.impressions}回・クリック${asset.clicks}回（CTR ${((asset.clicks / asset.impressions) * 100).toFixed(2)}%）・CV${asset.conversions.toFixed(1)}件`
+      : "配信実績なし（コピーの質で判断してください）";
+
+  const client = new Anthropic();
+  const stream = client.messages.stream({
+    model: "claude-opus-4-8",
+    max_tokens: 4000,
+    thinking: { type: "adaptive" },
+    system: `あなたは日本のリスティング広告のコピーライターです。指定された${isHeadline ? "見出し" : "説明文"}の改善案を1つだけ出してください。
+
+制約:
+- 全角${limitJa}文字以内を厳守（半角は0.5文字換算）。
+- 同じ広告の他アセットと訴求が重複しないこと。既に使われている切り口は避ける。
+- 数字・限定条件・ベネフィット・行動喚起のうち、既存に無い要素を入れる。
+- 誇大表現や根拠のない最上級表現（No.1・日本一など）は使わない。
+- 出力はJSONのみ: {"suggestion":"改善後の文言","reason":"変更理由(30文字以内)"}`,
+    messages: [
+      {
+        role: "user",
+        content: `【対象】${asset.fieldType === "HEADLINE" ? "見出し" : "説明文"}
+現在の文言: 「${asset.text}」
+実績: ${perf}
+Google評価: ${asset.performanceLabel ?? "評価なし"}
+広告グループ: ${asset.adGroupName ?? asset.campaignName}
+
+【同じ広告の他の${isHeadline ? "見出し" : "説明文"}】
+${siblings.map((s) => `- 「${s.text}」${s.impressions > 0 ? `（CTR ${((s.clicks / s.impressions) * 100).toFixed(2)}%）` : ""}`).join("\n") || "（なし）"}`,
+      },
+    ],
+  });
+  const message = await stream.finalMessage();
+  const text = message.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+  const s = text.indexOf("{");
+  const e = text.lastIndexOf("}");
+  if (s < 0 || e <= s) throw new Error("改善案を生成できませんでした");
+  const parsed = JSON.parse(text.slice(s, e + 1)) as { suggestion?: string; reason?: string };
+  if (!parsed.suggestion) throw new Error("改善案を生成できませんでした");
+
+  const suggestion = parsed.suggestion.slice(0, 200);
+  const reason = (parsed.reason ?? "").slice(0, 100);
+  await prisma.adAsset.update({
+    where: { id: assetId },
+    data: { aiVerdict: "replace", aiSuggestion: suggestion, aiReason: reason },
+  });
+  return { suggestion, reason };
+}
+
+// ── アセットのスコアリング ──────────────────────────
+// 実際の反応（同じ広告内での相対CTR・CV貢献）を主軸に採点する。
+// RSAは複数アセットの組み合わせで配信されるため、絶対値ではなく
+// 「同じ広告の中で平均より働いているか」で比較するのが妥当。
+
+// 相対CTRがノイズにならない最低表示回数
+const MIN_IMP_CONFIDENT = 300;
+const MIN_IMP_PROVISIONAL = 50;
+
+export type ScoreBasis = "performance" | "provisional" | "insufficient";
+
+export interface AssetScore {
+  score: number | null; // 0-100。実績が無ければ null
+  grade: "A" | "B" | "C" | "D" | null;
+  basis: ScoreBasis;
+  ctrIndex: number | null; // 同じ広告内の平均CTRを100とした指数
+  cvIndex: number | null;
+  notes: string[];
+}
+
+interface ScorableAsset {
+  text: string;
+  performanceLabel: string | null;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+}
+
+export function scoreAsset(a: ScorableAsset, siblings: ScorableAsset[]): AssetScore {
+  const notes: string[] = [];
+
+  // 同じ広告・同じ種別のアセット全体を基準にする
+  const totImp = siblings.reduce((n, s) => n + s.impressions, 0);
+  const totClicks = siblings.reduce((n, s) => n + s.clicks, 0);
+  const totCv = siblings.reduce((n, s) => n + s.conversions, 0);
+  const avgCtr = totImp > 0 ? totClicks / totImp : 0;
+  const avgCvr = totImp > 0 ? totCv / totImp : 0;
+
+  if (a.impressions < MIN_IMP_PROVISIONAL || avgCtr === 0) {
+    return {
+      score: null,
+      grade: null,
+      basis: "insufficient",
+      ctrIndex: null,
+      cvIndex: null,
+      notes: [
+        a.impressions === 0
+          ? "配信実績がないため採点できません（広告が停止中の可能性）"
+          : `表示回数${a.impressions}回では判断できません（${MIN_IMP_PROVISIONAL}回以上で暫定評価）`,
+      ],
+    };
+  }
+
+  const ctr = a.clicks / a.impressions;
+  const ctrIndex = Math.round((ctr / avgCtr) * 100);
+  const cvr = a.conversions / a.impressions;
+  const cvIndex = avgCvr > 0 ? Math.round((cvr / avgCvr) * 100) : null;
+
+  // 指数100（広告内平均）を60点として、±1ポイントごとに0.5点
+  let score = 60 + (ctrIndex - 100) * 0.5;
+  notes.push(`CTRは広告内平均の${ctrIndex}%（${(ctr * 100).toFixed(2)}%）`);
+
+  if (cvIndex !== null) {
+    score += (cvIndex - 100) * 0.2;
+    notes.push(`CV貢献は平均の${cvIndex}%`);
+  } else if (a.conversions > 0) {
+    score += 10;
+    notes.push(`このアセットのみCV ${a.conversions.toFixed(1)}件`);
+  }
+
+  // Googleの評価も実績に基づくものなので加味する
+  if (a.performanceLabel === "BEST") {
+    score += 15;
+    notes.push("Google評価「最良」");
+  } else if (a.performanceLabel === "GOOD") {
+    score += 5;
+    notes.push("Google評価「良」");
+  } else if (a.performanceLabel === "LOW") {
+    score -= 20;
+    notes.push("Google評価「低」");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const basis: ScoreBasis = a.impressions >= MIN_IMP_CONFIDENT ? "performance" : "provisional";
+  if (basis === "provisional") notes.push(`表示${a.impressions}回のため暫定値`);
+
+  return {
+    score,
+    grade: score >= 75 ? "A" : score >= 60 ? "B" : score >= 45 ? "C" : "D",
+    basis,
+    ctrIndex,
+    cvIndex,
+    notes,
+  };
+}
+
+// 改善ボタンを出す閾値（これ未満なら手を入れる価値がある）
+export const IMPROVE_THRESHOLD = 60;
+
 // ── 診断（ルールベース） ────────────────────────────
 
 export interface CreativeFinding {

@@ -486,7 +486,7 @@ export function createGoogleProvider(): AdProvider {
                   ad_group_ad_asset_view.pinned_field, asset.text_asset.text,
                   metrics.impressions, metrics.clicks, metrics.cost_micros, metrics.conversions
            FROM ad_group_ad_asset_view
-           WHERE ${range} AND ad_group_ad.status != 'REMOVED'
+           WHERE ${range} AND ad_group_ad.status = 'ENABLED'
            ORDER BY metrics.impressions DESC
            LIMIT 1000`,
           login

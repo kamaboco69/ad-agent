@@ -258,6 +258,33 @@ model AdCreative {
   @@index([organizationId])
 }
 
+// クライアント提出レポートの体裁と配信設定（接続＝クライアント単位。未設定なら既定値）
+model ReportTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  connectionId   String   @unique
+  clientName     String? // 表紙の宛名（未設定なら接続のアカウント名）
+  agencyName     String? // 差出人として表紙に出す自社名
+  logoUrl        String? // 表紙・ヘッダーに載せるロゴ画像URL
+  accentColor    String   @default("#0369a1")
+  greeting       String? // 表紙下の挨拶文
+  // 掲載セクションの ON/OFF
+  showSummary    Boolean  @default(true)
+  showPlatforms  Boolean  @default(true)
+  showCampaigns  Boolean  @default(true)
+  showInsight    Boolean  @default(true)
+  showActions    Boolean  @default(true)
+  showLeads      Boolean  @default(false)
+  // 自動配信
+  autoSend       Boolean  @default(false)
+  sendDay        Int      @default(1) // 毎月何日に送るか
+  recipients     String? // カンマ区切りの宛先
+  lastSentAt     DateTime?
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
 // 有効リードの自動判定ルール（組織ごとに1件）
 model LeadRuleSet {
   id               String   @id @default(cuid())

@@ -17,6 +17,7 @@ import {
   Pause,
   Users,
   Type,
+  LayoutGrid,
   Play,
 } from "lucide-react";
 import clsx from "clsx";
@@ -911,6 +912,14 @@ function Sidebar({ active, onNavigate }: { active: string; onNavigate: (id: stri
           </button>
         ))}
       </nav>
+      <a
+        href="/clients"
+        className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"
+        title="全クライアントの予算進捗・着地予想・レポート出力"
+      >
+        <LayoutGrid size={15} />
+        クライアント管理
+      </a>
       <a
         href="/creatives"
         className="mt-4 flex items-center gap-2.5 text-sm rounded-lg px-3 py-2 text-gray-700 hover:bg-gray-100 border border-gray-200"

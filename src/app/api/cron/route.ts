@@ -4,6 +4,7 @@ import { syncConnection } from "@/lib/sync";
 import { checkBudgetAlerts, runWeeklyInsights, runMonthlyReview } from "@/lib/insights";
 import { runAutoExclude } from "@/lib/search-terms";
 import { snapshotDaily, runDailyChecks, verifyDueChanges } from "@/lib/rules";
+import { runReportDelivery } from "@/lib/report-mail";
 
 // 定期実行（Cloud Scheduler から Bearer CRON_SECRET で叩く）。
 // task=sync     … 全組織の全接続の日次同期（直近14日を上書き取得）
@@ -60,6 +61,12 @@ export async function GET(req: NextRequest) {
   if (task === "monthly" || task === "all") {
     const force = new URL(req.url).searchParams.get("force") === "1";
     result.monthly = await runMonthlyReview(force); // 毎月1日JSTのみ生成
+  }
+
+  if (task === "deliver" || task === "all") {
+    // 設定された送信日になったクライアントへレポートを自動配信
+    const force = new URL(req.url).searchParams.get("force") === "1";
+    result.deliver = await runReportDelivery(force);
   }
 
   if (task === "daily" || task === "all") {
